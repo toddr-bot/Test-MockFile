@@ -136,6 +136,11 @@ sub _write_bytes {
 sub PRINT {
     my ( $self, @list ) = @_;
 
+    if ( $self->_is_closed_with_warning('print') ) {
+        $! = EBADF;
+        return undef;
+    }
+
     if ( !$self->{'write'} ) {
 
         # Filehandle $fh opened only for input at t/readline.t line 27, <$fh> line 2.
@@ -184,6 +189,11 @@ sub PRINTF {
     my $self   = shift;
     my $format = shift;
 
+    if ( $self->_is_closed_with_warning('printf') ) {
+        $! = EBADF;
+        return undef;
+    }
+
     if ( !$self->{'write'} ) {
         $! = EBADF;
         return;
@@ -215,6 +225,11 @@ works reveals there are all sorts of weird corner cases.
 
 sub WRITE {
     my ( $self, $buf, $len, $offset ) = @_;
+
+    if ( $self->_is_closed_with_warning('syswrite') ) {
+        $! = EBADF;
+        return undef;
+    }
 
     if ( !$self->{'write'} ) {
         $! = EBADF;
@@ -343,6 +358,10 @@ sub _READLINE_ONE_LINE {
 sub READLINE {
     my ($self) = @_;
 
+    if ( $self->_is_closed_with_warning('readline') ) {
+        return undef;
+    }
+
     if ( !$self->{'read'} ) {
         my $path = $self->{'file'} // 'unknown';
         CORE::warn("Filehandle $path opened only for output");
@@ -385,6 +404,10 @@ returned. Returns undef at EOF.
 sub GETC {
     my ($self) = @_;
 
+    if ( $self->_is_closed_with_warning('getc') ) {
+        return undef;
+    }
+
     if ( !$self->{'read'} ) {
         my $path = $self->{'file'} // 'unknown';
         CORE::warn("Filehandle $path opened only for output");
@@ -413,6 +436,11 @@ end up with some really weird strings with null bytes in them.
 
 sub READ {
     my ( $self, undef, $len, $offset ) = @_;
+
+    if ( $self->_is_closed_with_warning('read') ) {
+        $! = EBADF;
+        return undef;
+    }
 
     if ( !$self->{'read'} ) {
         $! = EBADF;
@@ -475,6 +503,14 @@ is removed. Further calls to this object should fail.
 sub CLOSE {
     my ($self) = @_;
 
+    # Double close: return false with EBADF, matching real Perl behavior.
+    if ( $self->{'closed'} ) {
+        $! = EBADF;
+        return 0;
+    }
+
+    $self->{'closed'} = 1;
+
     # Remove this specific handle from the mock's fhs list.
     # Each handle has its own tied object, so we match by tied identity.
     # Try through the weak data ref first, then fall back to the global hash.
@@ -489,6 +525,17 @@ sub CLOSE {
         } @{ $mock->{'fhs'} };
     }
 
+    return 1;
+}
+
+# Emit a Perl-style "op() on closed filehandle" warning and return true
+# if the handle has been closed.  Returns false if the handle is still open.
+sub _is_closed_with_warning {
+    my ( $self, $op ) = @_;
+    return 0 unless $self->{'closed'};
+
+    my $path = $self->{'file'} // 'unknown';
+    CORE::warn("$op() on closed filehandle $path at @{[ join ' line ', (caller(1))[1,2] ]}.\n");
     return 1;
 }
 
@@ -539,6 +586,8 @@ C<$self-E<gt>{'tell'}>, we determine if we're at EOF.
 
 sub EOF {
     my ($self) = @_;
+
+    return 1 if $self->{'closed'};
 
     my $data = $self->{'data'} or return 1;
 
@@ -628,6 +677,10 @@ exists on this method.
 sub SEEK {
     my ( $self, $pos, $whence ) = @_;
 
+    if ( $self->_is_closed_with_warning('seek') ) {
+        return 0;
+    }
+
     my $data = $self->{'data'} or do {
         $! = EBADF;
         return 0;
@@ -676,6 +729,11 @@ exists on this method.
 
 sub TELL {
     my ($self) = @_;
+
+    if ( $self->_is_closed_with_warning('tell') ) {
+        return -1;
+    }
+
     return $self->{'tell'};
 }
 
