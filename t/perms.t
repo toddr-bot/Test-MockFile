@@ -336,4 +336,48 @@ subtest 'open > on new file checks parent directory perms' => sub {
     } 1000, 1000;
 };
 
+# =========================================================================
+# symlink permission checks (needs write+exec on parent)
+# =========================================================================
+
+subtest 'symlink permission checks on parent directory' => sub {
+    my $parent = Test::MockFile->new_dir( '/perms/sdir', { mode => 0555, uid => 1000, gid => 1000 } );
+    my $target = Test::MockFile->file('/perms/sdir/mylink');
+
+    with_user {
+        ok( !symlink( '/some/target', '/perms/sdir/mylink' ), 'cannot symlink in read-only parent dir' );
+        is( $! + 0, EACCES, 'symlink errno is EACCES' );
+    } 1000, 1000;
+
+    my $parent2 = Test::MockFile->new_dir( '/perms/sdir2', { mode => 0755, uid => 1000, gid => 1000 } );
+    my $target2 = Test::MockFile->file('/perms/sdir2/mylink2');
+
+    with_user {
+        ok( symlink( '/some/target', '/perms/sdir2/mylink2' ), 'can symlink in writable parent dir' );
+    } 1000, 1000;
+};
+
+# =========================================================================
+# link permission checks (needs write+exec on parent of destination)
+# =========================================================================
+
+subtest 'link permission checks on parent directory' => sub {
+    my $parent = Test::MockFile->new_dir( '/perms/ldir', { mode => 0555, uid => 1000, gid => 1000 } );
+    my $source = Test::MockFile->file( '/perms/ldir/src', 'data' );
+    my $dest   = Test::MockFile->file('/perms/ldir/hardlink');
+
+    with_user {
+        ok( !link( '/perms/ldir/src', '/perms/ldir/hardlink' ), 'cannot link in read-only parent dir' );
+        is( $! + 0, EACCES, 'link errno is EACCES' );
+    } 1000, 1000;
+
+    my $parent2 = Test::MockFile->new_dir( '/perms/ldir2', { mode => 0755, uid => 1000, gid => 1000 } );
+    my $source2 = Test::MockFile->file( '/perms/ldir2/src2', 'data' );
+    my $dest2   = Test::MockFile->file('/perms/ldir2/hardlink2');
+
+    with_user {
+        ok( link( '/perms/ldir2/src2', '/perms/ldir2/hardlink2' ), 'can link in writable parent dir' );
+    } 1000, 1000;
+};
+
 done_testing();

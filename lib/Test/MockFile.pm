@@ -3752,6 +3752,13 @@ sub __symlink ($$) {
         return 0;
     }
 
+    # Permission check: symlink needs write+execute on parent dir
+    if ( defined $_mock_uid && !_check_parent_perms( $mock->{'path'}, 2 | 1 ) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'symlink', @_ );
+        return 0;
+    }
+
     # Convert the mock to a symlink pointing to $oldname
     $mock->{'readlink'} = $oldname;
     $mock->{'mode'}     = 07777 | S_IFLNK;
@@ -3838,6 +3845,13 @@ sub __link ($$) {
     # Destination must not already exist
     if ( $new_mock->exists ) {
         $! = EEXIST;
+        _maybe_throw_autodie( 'link', @_ );
+        return 0;
+    }
+
+    # Permission check: link needs write+execute on parent dir of destination
+    if ( defined $_mock_uid && !_check_parent_perms( $new_mock->{'path'}, 2 | 1 ) ) {
+        $! = EACCES;
         _maybe_throw_autodie( 'link', @_ );
         return 0;
     }
