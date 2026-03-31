@@ -7,7 +7,7 @@ use Test2::Bundle::Extended;
 use Test2::Tools::Explain;
 use Test2::Plugin::NoWarnings;
 
-use Errno qw/ENOENT EISDIR ENOTDIR ENOTEMPTY/;
+use Errno qw/ENOENT EISDIR ENOTDIR ENOTEMPTY EACCES/;
 
 use Test::MockFile qw< nostrict >;
 
@@ -237,6 +237,46 @@ note "-------------- rename: preserves inode and nlink --------------";
     my @st = stat('/mock/ino_new');
     is( $st[1], 42, 'inode preserved after rename' );
     is( $st[3], 3,  'nlink preserved after rename' );
+}
+
+note "-------------- rename: permission check on source parent dir --------------";
+{
+    my $parent = Test::MockFile->new_dir( '/mock/srcperm', { mode => 0555 } );
+    my $old    = Test::MockFile->file( '/mock/srcperm/file', 'data' );
+    my $dst    = Test::MockFile->file('/mock/dst_perm');
+
+    Test::MockFile->set_user( 1000, 1000 );
+    ok( !rename( '/mock/srcperm/file', '/mock/dst_perm' ), 'rename fails when source parent is read-only' );
+    is( $! + 0, EACCES, 'errno is EACCES' );
+    ok( $old->exists, 'source file still exists after denied rename' );
+    Test::MockFile->clear_user();
+}
+
+note "-------------- rename: permission check on dest parent dir --------------";
+{
+    my $src_parent = Test::MockFile->new_dir( '/mock/src_ok', { mode => 0755, uid => 1000 } );
+    my $old        = Test::MockFile->file( '/mock/src_ok/file', 'data' );
+    my $dst_parent = Test::MockFile->new_dir( '/mock/dstperm', { mode => 0555 } );
+    my $dst        = Test::MockFile->file('/mock/dstperm/target');
+
+    Test::MockFile->set_user( 1000, 1000 );
+    ok( !rename( '/mock/src_ok/file', '/mock/dstperm/target' ), 'rename fails when dest parent is read-only' );
+    is( $! + 0, EACCES, 'errno is EACCES' );
+    ok( $old->exists, 'source file still exists after denied rename' );
+    Test::MockFile->clear_user();
+}
+
+note "-------------- rename: succeeds when both parents are writable --------------";
+{
+    my $src_dir = Test::MockFile->new_dir( '/mock/src_w', { mode => 0755, uid => 1000 } );
+    my $old     = Test::MockFile->file( '/mock/src_w/file', 'data' );
+    my $dst_dir = Test::MockFile->new_dir( '/mock/dst_w', { mode => 0755, uid => 1000 } );
+    my $dst     = Test::MockFile->file('/mock/dst_w/target');
+
+    Test::MockFile->set_user( 1000, 1000 );
+    ok( rename( '/mock/src_w/file', '/mock/dst_w/target' ), 'rename succeeds when both parents are writable' );
+    is( $dst->contents, 'data', 'file moved successfully' );
+    Test::MockFile->clear_user();
 }
 
 done_testing();

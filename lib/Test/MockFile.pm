@@ -4041,6 +4041,20 @@ sub __rename ($$) {
     # Renaming to self is a no-op (POSIX rename(2))
     return 1 if $mock_old == $mock_new;
 
+    # Permission check: rename needs write+execute on both parent dirs (POSIX rename(2))
+    if ( defined $_mock_uid ) {
+        if ( !_check_parent_perms( $mock_old->{'path'}, 2 | 1 ) ) {
+            $! = EACCES;
+            _maybe_throw_autodie( 'rename', @_ );
+            return 0;
+        }
+        if ( !_check_parent_perms( $mock_new->{'path'}, 2 | 1 ) ) {
+            $! = EACCES;
+            _maybe_throw_autodie( 'rename', @_ );
+            return 0;
+        }
+    }
+
     # Can't overwrite a directory with a non-directory
     if ( $mock_new->exists && $mock_new->is_dir && !$mock_old->is_dir ) {
         $! = EISDIR;
