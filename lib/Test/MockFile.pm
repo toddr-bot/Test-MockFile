@@ -4125,6 +4125,24 @@ sub __rename ($$) {
     $mock_new->{'mtime'} = $mock_old->{'mtime'};
     $mock_new->{'atime'} = $mock_old->{'atime'};
 
+    # Migrate open file handles from old mock to new mock.
+    # Unix semantics: open fds follow the inode, not the directory entry.
+    # Each tied FileHandle has a weak 'data' ref that must be re-pointed.
+    if ( $mock_old->{'fhs'} && @{ $mock_old->{'fhs'} } ) {
+        $mock_new->{'fhs'} //= [];
+        for my $fh_ref ( @{ $mock_old->{'fhs'} } ) {
+            next unless defined $fh_ref;
+            my $tied = ref $fh_ref ? tied( *{$fh_ref} ) : undef;
+            if ($tied) {
+                $tied->{'data'} = $mock_new;
+                Scalar::Util::weaken( $tied->{'data'} );
+                $tied->{'file'} = $mock_new->{'path'};
+            }
+            push @{ $mock_new->{'fhs'} }, $fh_ref;
+        }
+        $mock_old->{'fhs'} = [];
+    }
+
     # rename updates ctime on both source and destination
     my $now = time;
     $mock_new->{'ctime'} = $now;
