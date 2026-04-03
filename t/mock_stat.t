@@ -136,7 +136,7 @@ my $symlink_lstat_return = array {
     item match qr/^[0-9]{3,}$/;
     item match qr/^[0-9]{3,}$/;
     item 4096;
-    item 1;
+    item 8;    # blocks: 1 fs block in 512-byte units (4096/512 = 8)
 };
 
 is( Test::MockFile::_mock_stat( 'lstat', '/broken_link' ), $symlink_lstat_return, "lstat on /broken_link returns the stat on the symlink itself." );

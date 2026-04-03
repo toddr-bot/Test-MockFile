@@ -2517,11 +2517,16 @@ Calculates the block count of the file based on its size.
 sub blocks {
     my ($self) = @_;
 
-    my $size    = $self->size;
+    my $size = $self->size;
     return 0 unless $size;
 
     my $blksize = abs( $self->{'blksize'} );
-    return int( ( $size + $blksize - 1 ) / $blksize );
+
+    # Number of filesystem blocks needed (ceiling division)
+    my $fs_blocks = int( ( $size + $blksize - 1 ) / $blksize );
+
+    # stat(2) st_blocks is always in 512-byte units, regardless of st_blksize
+    return $fs_blocks * int( $blksize / 512 );
 }
 
 =head2 chmod

@@ -56,8 +56,8 @@ subtest 'size() and blocks()' => sub {
 
     is( $mock->size(), 5000, 'size() matches content length' );
 
-    # blocks() = ceil(size / blksize) — no 512-byte conversion
-    my $expected_blocks = int( ( 5000 + 4096 - 1 ) / 4096 );
+    # blocks() = ceil(size / blksize) * (blksize / 512) — stat(2) uses 512-byte units
+    my $expected_blocks = int( ( 5000 + 4096 - 1 ) / 4096 ) * int( 4096 / 512 );
     is( $mock->blocks(), $expected_blocks, 'blocks() computes correctly from size and blksize' );
 };
 
