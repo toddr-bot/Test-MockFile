@@ -7,7 +7,7 @@ use Test2::Plugin::NoWarnings;
 
 use Fcntl qw( O_RDWR O_CREAT );
 use File::Temp ();
-use Errno qw( ENOENT EISDIR EINVAL );
+use Errno qw( EACCES ENOENT EISDIR EINVAL );
 
 # Create a real tempfile before loading Test::MockFile
 my $real_tempfile;
@@ -141,6 +141,53 @@ subtest 'truncate via append filehandle succeeds' => sub {
     is( $mock->contents(), 'some', 'contents shortened via append fh' );
 
     close $fh;
+};
+
+subtest 'truncate by path on read-only file fails with EACCES' => sub {
+    my $mock = Test::MockFile->file(
+        '/fake/readonly_path', 'some data',
+        { mode => 0444, uid => 99, gid => 99 },
+    );
+
+    # Without mock user, permission checks are skipped — truncate succeeds
+    ok( truncate( '/fake/readonly_path', 4 ), 'truncate succeeds without mock user' );
+    is( $mock->contents(), 'some', 'contents shortened' );
+
+    # Restore contents for next check
+    $mock->contents('some data');
+
+    # With mock user as non-owner, read-only file should deny truncate
+    Test::MockFile->set_user( 1000, 1000 );
+    $! = 0;
+    my $ret = truncate( '/fake/readonly_path', 4 );
+    ok( !$ret, 'truncate by path returns false on read-only file' );
+    is( $! + 0, EACCES, '$! is EACCES' );
+    is( $mock->contents(), 'some data', 'contents unchanged' );
+    Test::MockFile->clear_user();
+};
+
+subtest 'truncate by path succeeds when user has write permission' => sub {
+    my $mock = Test::MockFile->file(
+        '/fake/writable_path', 'writable data',
+        { mode => 0644, uid => 1000, gid => 1000 },
+    );
+
+    Test::MockFile->set_user( 1000, 1000 );
+    ok( truncate( '/fake/writable_path', 8 ), 'truncate succeeds on writable file' );
+    is( $mock->contents(), 'writable', 'contents shortened' );
+    Test::MockFile->clear_user();
+};
+
+subtest 'truncate by path — root bypasses write check' => sub {
+    my $mock = Test::MockFile->file(
+        '/fake/root_trunc', 'secret data',
+        { mode => 0000, uid => 99, gid => 99 },
+    );
+
+    Test::MockFile->set_user( 0, 0 );
+    ok( truncate( '/fake/root_trunc', 6 ), 'root can truncate 0000 mode file' );
+    is( $mock->contents(), 'secret', 'contents shortened by root' );
+    Test::MockFile->clear_user();
 };
 
 done_testing();
