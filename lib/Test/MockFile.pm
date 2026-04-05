@@ -4434,6 +4434,14 @@ sub __truncate ($$) {
             return 0;
         }
     }
+    else {
+        # Path-based truncate: POSIX truncate(2) requires write permission on the file.
+        if ( !_check_perms( $mock, 2 ) ) {
+            $! = EACCES;
+            _maybe_throw_autodie( 'truncate', @_ );
+            return 0;
+        }
+    }
 
     if ( $length < 0 ) {
         $! = EINVAL;
