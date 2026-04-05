@@ -108,7 +108,7 @@ sub _write_bytes {
 
     my $data = $self->{'data'} or do {
         $! = EBADF;
-        return 0;
+        return undef;
     };
 
     my $tell     = $self->{'tell'};
@@ -218,13 +218,13 @@ sub WRITE {
 
     if ( !$self->{'write'} ) {
         $! = EBADF;
-        return 0;
+        return undef;
     }
 
     unless ( $len =~ m/^-?[0-9.]+$/ ) {
         CORE::warn(qq{Argument "$len" isn't numeric in syswrite at @{[ join ' line ', (caller)[1,2] ]}.\n});
         $! = EINVAL;
-        return 0;
+        return undef;
     }
 
     $len = int($len);    # Perl seems to do this to floats.
@@ -232,7 +232,7 @@ sub WRITE {
     if ( $len < 0 ) {
         CORE::warn(qq{Negative length at @{[ join ' line ', (caller)[1,2] ]}.\n});
         $! = EINVAL;
-        return 0;
+        return undef;
     }
 
     my $strlen = length($buf);
@@ -245,7 +245,7 @@ sub WRITE {
     if ( $offset < 0 || $offset > $strlen ) {
         CORE::warn(qq{Offset outside string at @{[ join ' line ', (caller)[1,2] ]}.\n});
         $! = EINVAL;
-        return 0;
+        return undef;
     }
 
     # Write directly — syswrite must NOT inherit $, or $\ from PRINT.
@@ -346,6 +346,7 @@ sub READLINE {
     if ( !$self->{'read'} ) {
         my $path = $self->{'file'} // 'unknown';
         CORE::warn("Filehandle $path opened only for output");
+        $! = EBADF;
         return;
     }
 
@@ -388,6 +389,7 @@ sub GETC {
     if ( !$self->{'read'} ) {
         my $path = $self->{'file'} // 'unknown';
         CORE::warn("Filehandle $path opened only for output");
+        $! = EBADF;
         return undef;
     }
 
@@ -439,7 +441,7 @@ sub READ {
 
     my $data = $self->{'data'} or do {
         $! = EBADF;
-        return 0;
+        return undef;
     };
 
     my $contents_len = length $data->{'contents'};

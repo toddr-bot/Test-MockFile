@@ -126,7 +126,7 @@ use Test::MockFile qw< nostrict >;
 
     $! = 0;
     my $ret = syswrite( $fh, "data", "abc" );
-    is( $ret, 0, "syswrite with non-numeric len returns 0" );
+    ok( !defined $ret, "syswrite with non-numeric len returns undef" );
     is( $! + 0, EINVAL, "errno is EINVAL for non-numeric len" );
     ok( @warns >= 1, "warning emitted for non-numeric len" );
     like( $warns[0], qr/isn't numeric/, "warning mentions non-numeric argument" );
@@ -146,7 +146,7 @@ use Test::MockFile qw< nostrict >;
 
     $! = 0;
     my $ret = syswrite( $fh, "data", -5 );
-    is( $ret, 0, "syswrite with negative len returns 0" );
+    ok( !defined $ret, "syswrite with negative len returns undef" );
     is( $! + 0, EINVAL, "errno is EINVAL for negative len" );
     ok( @warns >= 1, "warning emitted for negative len" );
     like( $warns[0], qr/Negative length/, "warning mentions negative length" );

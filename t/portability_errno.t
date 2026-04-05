@@ -45,7 +45,7 @@ subtest "syswrite with non-numeric length warns" => sub {
     local $SIG{__WARN__} = sub { push @warnings, $_[0] };
 
     my $ret = syswrite( $fh, "hello", "abc" );
-    is( $ret, 0, "syswrite with non-numeric len returns 0" );
+    ok( !defined $ret, "syswrite with non-numeric len returns undef" );
     is( $! + 0, EINVAL, "\$! is set to EINVAL" );
     ok( scalar @warnings >= 1, "got a warning" );
     like( $warnings[0], qr/isn't numeric/, "warning mentions non-numeric argument" ) if @warnings;
@@ -61,7 +61,7 @@ subtest "syswrite with negative length warns" => sub {
     local $SIG{__WARN__} = sub { push @warnings, $_[0] };
 
     my $ret = syswrite( $fh, "hello", -1 );
-    is( $ret, 0, "syswrite with negative length returns 0" );
+    ok( !defined $ret, "syswrite with negative length returns undef" );
     is( $! + 0, EINVAL, "\$! is set to EINVAL" );
     ok( scalar @warnings >= 1, "got a warning" );
     like( $warnings[0], qr/Negative length/, "warning mentions negative length" ) if @warnings;
@@ -77,7 +77,7 @@ subtest "syswrite with offset outside string warns" => sub {
     local $SIG{__WARN__} = sub { push @warnings, $_[0] };
 
     my $ret = syswrite( $fh, "hello", 2, 100 );
-    is( $ret, 0, "syswrite with offset beyond string returns 0" );
+    ok( !defined $ret, "syswrite with offset beyond string returns undef" );
     is( $! + 0, EINVAL, "\$! is set to EINVAL" );
     ok( scalar @warnings >= 1, "got a warning" );
     like( $warnings[0], qr/Offset outside string/, "warning mentions offset" ) if @warnings;
@@ -104,7 +104,7 @@ subtest "syswrite with too-negative offset warns" => sub {
     local $SIG{__WARN__} = sub { push @warnings, $_[0] };
 
     my $ret = syswrite( $fh, "hello", 2, -10 );
-    is( $ret, 0, "syswrite with offset before start of string returns 0" );
+    ok( !defined $ret, "syswrite with offset before start of string returns undef" );
     is( $! + 0, EINVAL, "\$! is set to EINVAL" );
     ok( scalar @warnings >= 1, "got a warning" );
     like( $warnings[0], qr/Offset outside string/, "warning mentions offset" ) if @warnings;

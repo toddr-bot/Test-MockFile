@@ -60,7 +60,7 @@ subtest 'sysread after mock destruction returns 0' => sub {
         $errno = $! + 0;
     };
     ok($ok, "sysread does not crash after mock destruction");
-    is($ret, 0, "sysread returns 0 bytes");
+    ok(!defined $ret, "sysread returns undef (EBADF)");
     is($errno, EBADF, "errno is EBADF after sysread on destroyed mock");
 
     close $fh;
@@ -96,7 +96,7 @@ subtest 'printf after mock destruction returns false' => sub {
     close $fh;
 };
 
-subtest 'syswrite after mock destruction returns 0' => sub {
+subtest 'syswrite after mock destruction returns undef' => sub {
     my $fh = _open_then_destroy_mock('/fake/syswrite', '', '>');
 
     my ($ret, $errno);
@@ -105,7 +105,7 @@ subtest 'syswrite after mock destruction returns 0' => sub {
         $errno = $! + 0;
     };
     ok($ok, "syswrite does not crash after mock destruction");
-    is($ret, 0, "syswrite returns 0 bytes");
+    ok(!defined $ret, "syswrite returns undef (EBADF)");
     is($errno, EBADF, "errno is EBADF after syswrite on destroyed mock");
 
     close $fh;
