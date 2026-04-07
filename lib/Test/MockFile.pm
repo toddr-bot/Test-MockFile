@@ -4375,6 +4375,24 @@ sub __utime (@) {
             next;
         }
 
+        # POSIX permission check for utime:
+        #   - root: always allowed
+        #   - owner: always allowed
+        #   - non-owner with write permission: only utime(undef, undef) (set to now)
+        #   - non-owner without write permission: EACCES
+        if ( defined $_mock_uid && $_mock_uid != 0 && $_mock_uid != $mock->{'uid'} ) {
+            if ( !_check_perms( $mock, 2 ) ) {
+                $! = EACCES;
+                next;
+            }
+
+            # Non-owner with write perm can only set times to "now"
+            if ( defined $atime || defined $mtime ) {
+                $! = EPERM;
+                next;
+            }
+        }
+
         $mock->{'atime'} = defined $atime ? $atime : $now;
         $mock->{'mtime'} = defined $mtime ? $mtime : $now;
         $mock->{'ctime'} = $now;

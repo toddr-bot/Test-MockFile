@@ -9,6 +9,10 @@ use Test2::Tools::Exception qw< dies lives >;
 use Test::MockFile ();
 use Errno qw< EACCES EPERM >;
 
+# Disable umask so mode bits in tests are exact
+my $saved_umask = umask(0);
+END { umask($saved_umask) if defined $saved_umask }
+
 # utime POSIX permission rules:
 #   - Root can always set times
 #   - Owner can always set times
