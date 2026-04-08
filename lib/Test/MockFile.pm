@@ -85,6 +85,8 @@ use constant S_IFBLK  => 0060000;     # block device
 use constant S_IFDIR  => 0040000;     # directory
 use constant S_IFCHR  => 0020000;     # character device
 use constant S_IFIFO  => 0010000;     # FIFO
+use constant S_ISUID  => 0004000;     # set-user-ID bit
+use constant S_ISGID  => 0002000;     # set-group-ID bit
 
 =head1 SYNOPSIS
 
@@ -4176,7 +4178,7 @@ sub __chown (@) {
     my $is_root     = $eff_uid == 0 || $eff_gids =~ /( ^ | \s ) 0 ( \s | $)/xms;
     my $is_in_group = $eff_gids =~ /( ^ | \s ) \Q$target_gid\E ( \s | $ )/xms;
 
-    # Only check permissions once (before the loop), not per-file.
+    # Pre-loop permission checks that apply to ALL files uniformly.
     # -1 means "keep as is" — no permission needed for unchanged fields.
     # POSIX: non-root cannot change uid; can only change gid to a group they belong to.
     if ( !$is_root ) {
@@ -4220,9 +4222,21 @@ sub __chown (@) {
             next;
         }
 
+        # POSIX: non-root must own the file to change its group (GH #3)
+        if ( !$is_root && $gid != -1 && $eff_uid != $mock->{'uid'} ) {
+            $! = EPERM;
+            next;
+        }
+
         # -1 means "keep as is" — preserve the file's current value
         $mock->{'uid'} = $uid == -1 ? $mock->{'uid'} : $uid;
         $mock->{'gid'} = $gid == -1 ? $mock->{'gid'} : $gid;
+
+        # POSIX: non-root chown clears setuid and setgid bits
+        if ( !$is_root && ( $uid != -1 || $gid != -1 ) ) {
+            $mock->{'mode'} &= ~( S_ISUID | S_ISGID );
+        }
+
         $mock->{'ctime'} = time;
 
         $num_changed++;

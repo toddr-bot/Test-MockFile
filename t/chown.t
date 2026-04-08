@@ -285,6 +285,107 @@ subtest(
 );
 
 subtest(
+    'chown gid denied on non-owned file' => sub {
+        # File owned by uid 500, caller is uid 1000 with gid 500 in groups
+        my $file = Test::MockFile->file(
+            '/chown_not_mine' => 'data',
+            { uid => 500, gid => 500, mode => 0644 },
+        );
+
+        Test::MockFile->set_user( 1000, 1000, 500 );
+
+        # Even though gid 500 is in our group list, we don't own the file
+        $! = 0;
+        is( chown( -1, 500, '/chown_not_mine' ), 0, 'non-owner cannot change gid even to own group' );
+        is( $! + 0, EPERM, 'errno is EPERM for non-owner gid change' );
+
+        # Verify file is unchanged
+        my @st = stat('/chown_not_mine');
+        is( $st[4], 500, 'uid unchanged' );
+        is( $st[5], 500, 'gid unchanged' );
+
+        Test::MockFile->clear_user;
+    }
+);
+
+subtest(
+    'chown clears setuid/setgid bits for non-root' => sub {
+        use Fcntl ':mode';
+
+        my $file = Test::MockFile->file(
+            '/chown_suid_test' => 'data',
+            { uid => 1000, gid => 1000, mode => 06755 },
+        );
+
+        Test::MockFile->set_user( 1000, 1000, 2000 );
+
+        # Verify setuid/setgid bits are set
+        my @st = stat('/chown_suid_test');
+        ok( $st[2] & S_ISUID, 'setuid bit is initially set' );
+        ok( $st[2] & S_ISGID, 'setgid bit is initially set' );
+
+        # Non-root chown should clear setuid/setgid
+        ok( chown( -1, 2000, '/chown_suid_test' ), 'chown gid succeeds for owner' );
+
+        @st = stat('/chown_suid_test');
+        ok( !( $st[2] & S_ISUID ), 'setuid bit cleared after non-root chown' );
+        ok( !( $st[2] & S_ISGID ), 'setgid bit cleared after non-root chown' );
+
+        # Regular permission bits preserved
+        is( $st[2] & 07777 & ~( S_ISUID | S_ISGID ), 0755, 'regular permission bits preserved' );
+
+        Test::MockFile->clear_user;
+    }
+);
+
+subtest(
+    'root chown preserves setuid/setgid bits' => sub {
+        use Fcntl ':mode';
+
+        my $file = Test::MockFile->file(
+            '/chown_root_suid' => 'data',
+            { uid => 1000, gid => 1000, mode => 06755 },
+        );
+
+        Test::MockFile->set_user( 0, 0 );
+
+        ok( chown( 2000, 2000, '/chown_root_suid' ), 'root chown succeeds' );
+
+        my @st = stat('/chown_root_suid');
+        ok( $st[2] & S_ISUID, 'setuid bit preserved after root chown' );
+        ok( $st[2] & S_ISGID, 'setgid bit preserved after root chown' );
+
+        Test::MockFile->clear_user;
+    }
+);
+
+subtest(
+    'chown multi-file: non-owner files skipped, owned files changed' => sub {
+        my $owned = Test::MockFile->file(
+            '/chown_multi_owned' => 'data',
+            { uid => 1000, gid => 1000 },
+        );
+        my $not_owned = Test::MockFile->file(
+            '/chown_multi_other' => 'data',
+            { uid => 500, gid => 500 },
+        );
+
+        Test::MockFile->set_user( 1000, 1000, 2000 );
+
+        my $result = chown( -1, 2000, '/chown_multi_owned', '/chown_multi_other' );
+        is( $result, 1, 'chown returns 1 (only owned file changed)' );
+
+        my @st_owned = stat('/chown_multi_owned');
+        is( $st_owned[5], 2000, 'owned file gid changed' );
+
+        my @st_other = stat('/chown_multi_other');
+        is( $st_other[5], 500, 'non-owned file gid unchanged' );
+
+        Test::MockFile->clear_user;
+    }
+);
+
+subtest(
     'chown with broken symlink in multi-file list does not confess' => sub {
         my $link = Test::MockFile->symlink( '/nonexistent_target', '/chown_broken_link' );
         my $file = Test::MockFile->file( '/chown_real_file', 'content' );
