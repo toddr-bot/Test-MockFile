@@ -783,6 +783,43 @@ sub _check_parent_perms {
     return _check_perms( $parent_mock, $access );
 }
 
+# _glob_path_accessible($path)
+# Returns true if the mocked path is accessible for glob results:
+# - the parent directory must have read permission (to list contents)
+# - every ancestor directory must have execute permission (to traverse)
+# Directories that are not mocked are assumed accessible.
+sub _glob_path_accessible {
+    my ($path) = @_;
+
+    # Check parent directory read permission (needed to list its contents)
+    ( my $parent = $path ) =~ s{ / [^/]+ $ }{}xms;
+    $parent = '/' if $parent eq '';
+
+    my $parent_mock = _get_file_object($parent);
+    if ($parent_mock) {
+        return 0 unless _check_perms( $parent_mock, 4 );    # read
+    }
+
+    # Check execute (traverse) permission on all ancestor directories
+    my $dir = $path;
+    while ( $dir =~ s{ / [^/]+ $ }{}xms && length $dir ) {
+        my $dir_mock = _get_file_object($dir);
+        if ($dir_mock) {
+            return 0 unless _check_perms( $dir_mock, 1 );    # execute
+        }
+    }
+
+    # Also check root if path is absolute and root is mocked
+    if ( $path =~ m{^/} ) {
+        my $root_mock = _get_file_object('/');
+        if ($root_mock) {
+            return 0 unless _check_perms( $root_mock, 1 );
+        }
+    }
+
+    return 1;
+}
+
 my @_tmf_callers;
 
 # Packages where autodie was active when T::MF was imported.
@@ -2983,6 +3020,13 @@ sub __glob {
     @mocked_files = sort @mocked_files;
 
     my @results = map Text::Glob::match_glob( $_, @mocked_files ), @patterns;
+
+    # Permission check: when set_user() is active, filter out paths where
+    # the parent directory lacks read permission or any ancestor directory
+    # lacks execute (traverse) permission, matching real glob(3) behavior.
+    if ( defined $_mock_uid ) {
+        @results = grep { _glob_path_accessible($_) } @results;
+    }
 
     # In nostrict mode, also return real filesystem matches (issue #158).
     # In strict mode, only mocked files are visible — no real FS access.
