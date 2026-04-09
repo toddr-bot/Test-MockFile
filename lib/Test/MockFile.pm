@@ -3725,6 +3725,14 @@ sub __readlink (_) {
         _maybe_throw_autodie( 'readlink', @_ );
         return undef;
     }
+
+    # Permission check: readlink needs execute on parent dir to reach the symlink
+    if ( defined $_mock_uid && !_check_parent_perms( $file, 1 ) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'readlink', @_ );
+        return undef;
+    }
+
     return $mock_object->readlink;
 }
 
