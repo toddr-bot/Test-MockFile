@@ -86,6 +86,9 @@ use constant S_IFDIR  => 0040000;     # directory
 use constant S_IFCHR  => 0020000;     # character device
 use constant S_IFIFO  => 0010000;     # FIFO
 
+use constant S_ISUID => 04000;        # set-user-ID bit
+use constant S_ISGID => 02000;        # set-group-ID bit
+
 =head1 SYNOPSIS
 
 Intercepts file system calls for specific files so unit testing can
@@ -4300,7 +4303,17 @@ sub __chmod (@) {
             next;
         }
 
-        $mock->{'mode'} = ( $mock->{'mode'} & S_IFMT ) | ( $mode & S_IFPERMS );
+        my $new_perms = $mode & S_IFPERMS;
+
+        # POSIX: non-root chmod silently strips S_ISGID when the process
+        # is not a member of the file's group (prevents sgid escalation).
+        if ( defined $_mock_uid && $_mock_uid != 0 && ( $new_perms & S_ISGID ) ) {
+            unless ( grep { $_ == $mock->{'gid'} } @_mock_gids ) {
+                $new_perms &= ~S_ISGID;
+            }
+        }
+
+        $mock->{'mode'} = ( $mock->{'mode'} & S_IFMT ) | $new_perms;
         $mock->{'ctime'} = time;
 
         $num_changed++;

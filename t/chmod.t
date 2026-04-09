@@ -9,7 +9,7 @@ use Test2::Plugin::NoWarnings;
 use Test2::Tools::Exception qw< lives dies >;
 use Test2::Tools::Warnings qw< warning >;
 use Test::MockFile qw< nostrict >;
-use Errno qw/ENOENT/;
+use Errno qw/ENOENT EPERM/;
 
 use File::Temp qw< tempfile >;
 
@@ -293,6 +293,110 @@ subtest(
         );
         is( $result, 0, 'chmod returns 0 (no files changed)' );
         is( $errno, ENOENT, 'errno set to ENOENT' );
+    }
+);
+
+subtest(
+    'chmod strips S_ISGID for non-root user not in file group' => sub {
+        my $orig_umask = umask(0);
+
+        my $file = Test::MockFile->file( '/sgid_test/file', 'data', { mode => 0644, uid => 1000, gid => 50 } );
+
+        # Owner IS in the file's group — S_ISGID should be preserved
+        Test::MockFile->set_user( 1000, 1000, 50 );
+        chmod 02755, '/sgid_test/file';
+        is(
+            sprintf( '%04o', ( stat '/sgid_test/file' )[2] & 07777 ),
+            '2755',
+            'S_ISGID preserved when user is in file group',
+        );
+
+        # Owner NOT in the file's group — S_ISGID should be silently stripped
+        Test::MockFile->set_user( 1000, 1000, 100 );
+        chmod 02755, '/sgid_test/file';
+        is(
+            sprintf( '%04o', ( stat '/sgid_test/file' )[2] & 07777 ),
+            '0755',
+            'S_ISGID stripped when user is NOT in file group',
+        );
+
+        # Root can always set S_ISGID regardless of group membership
+        Test::MockFile->set_user( 0, 0 );
+        chmod 02755, '/sgid_test/file';
+        is(
+            sprintf( '%04o', ( stat '/sgid_test/file' )[2] & 07777 ),
+            '2755',
+            'Root can set S_ISGID regardless of group membership',
+        );
+
+        # No mock user — S_ISGID always preserved (no permission enforcement)
+        Test::MockFile->clear_user();
+        chmod 02755, '/sgid_test/file';
+        is(
+            sprintf( '%04o', ( stat '/sgid_test/file' )[2] & 07777 ),
+            '2755',
+            'S_ISGID preserved when no mock user is set',
+        );
+
+        umask($orig_umask);
+    }
+);
+
+subtest(
+    'chmod preserves S_ISUID for file owner' => sub {
+        my $orig_umask = umask(0);
+
+        my $file = Test::MockFile->file( '/suid_test/file', 'data', { mode => 0644, uid => 1000, gid => 50 } );
+
+        # Owner can set S_ISUID on their own file
+        Test::MockFile->set_user( 1000, 1000, 50 );
+        chmod 04755, '/suid_test/file';
+        is(
+            sprintf( '%04o', ( stat '/suid_test/file' )[2] & 07777 ),
+            '4755',
+            'Owner can set S_ISUID on their own file',
+        );
+
+        # Both S_ISUID and S_ISGID, user in group
+        chmod 06755, '/suid_test/file';
+        is(
+            sprintf( '%04o', ( stat '/suid_test/file' )[2] & 07777 ),
+            '6755',
+            'Owner in group can set both S_ISUID and S_ISGID',
+        );
+
+        # Both S_ISUID and S_ISGID, user NOT in group — only S_ISGID stripped
+        Test::MockFile->set_user( 1000, 1000, 100 );
+        chmod 06755, '/suid_test/file';
+        is(
+            sprintf( '%04o', ( stat '/suid_test/file' )[2] & 07777 ),
+            '4755',
+            'S_ISGID stripped but S_ISUID preserved when user not in group',
+        );
+
+        Test::MockFile->clear_user();
+        umask($orig_umask);
+    }
+);
+
+subtest(
+    'chmod permission check — non-owner gets EPERM' => sub {
+        my $file = Test::MockFile->file( '/eperm_test/file', 'data', { mode => 0644, uid => 1000, gid => 1000 } );
+
+        # Non-owner, non-root cannot chmod
+        Test::MockFile->set_user( 2000, 2000 );
+        my $result = chmod 0777, '/eperm_test/file';
+        is( $result, 0, 'chmod returns 0 for non-owner' );
+        is( $! + 0, EPERM, 'errno is EPERM for non-owner chmod' );
+
+        # Verify mode unchanged
+        is(
+            sprintf( '%04o', ( stat '/eperm_test/file' )[2] & 07777 ),
+            '0644',
+            'Mode unchanged after failed chmod',
+        );
+
+        Test::MockFile->clear_user();
     }
 );
 
