@@ -732,6 +732,22 @@ sub clear_user {
     return;
 }
 
+# _apply_ownership($mock)
+# Sets uid/gid on a mock to the current mock user's identity.
+# POSIX: newly created files/dirs are owned by the effective uid/gid.
+# Called after successful file/directory/symlink creation.
+# No-op when set_user() is not active.
+sub _apply_ownership {
+    my ($mock) = @_;
+
+    return unless defined $_mock_uid;
+
+    $mock->{'uid'} = $_mock_uid;
+    $mock->{'gid'} = $_mock_gids[0] // 0;
+
+    return;
+}
+
 # _check_perms($mock, $access)
 # Checks Unix permission bits on a mock file object.
 # $access is a bitmask: 4=read, 2=write, 1=execute (same as R_OK/W_OK/X_OK)
@@ -3224,12 +3240,13 @@ sub __open (*;$@) {
         }
     }
 
-    # POSIX open(2): creating a new file sets atime, mtime, and ctime.
+    # POSIX open(2): creating a new file sets atime, mtime, ctime, and ownership.
     if ( $was_new && defined $mock_file->{'contents'} ) {
         my $now = time;
         $mock_file->{'atime'} = $now;
         $mock_file->{'mtime'} = $now;
         $mock_file->{'ctime'} = $now;
+        _apply_ownership($mock_file);
     }
 
     # Creating a new file in a directory updates the directory's mtime.
@@ -3326,13 +3343,14 @@ sub __sysopen (*$$;$) {
         return undef;
     }
 
-    # O_CREAT — POSIX open(2): creating a new file sets atime, mtime, and ctime.
+    # O_CREAT — POSIX open(2): creating a new file sets atime, mtime, ctime, and ownership.
     if ( $sysopen_mode & O_CREAT && !defined $mock_file->{'contents'} ) {
         $mock_file->{'contents'} = '';
         my $now = time;
         $mock_file->{'atime'} = $now;
         $mock_file->{'mtime'} = $now;
         $mock_file->{'ctime'} = $now;
+        _apply_ownership($mock_file);
         _update_parent_dir_times( $_[1] );
 
         # Apply permissions from sysopen's 4th argument (mode/mask)
@@ -3756,11 +3774,12 @@ sub __symlink ($$) {
     $mock->{'readlink'} = $oldname;
     $mock->{'mode'}     = 07777 | S_IFLNK;
 
-    # POSIX symlink(2): creating a symlink sets atime, mtime, and ctime.
+    # POSIX symlink(2): creating a symlink sets atime, mtime, ctime, and ownership.
     my $now = time;
     $mock->{'atime'} = $now;
     $mock->{'mtime'} = $now;
     $mock->{'ctime'} = $now;
+    _apply_ownership($mock);
 
     # Mark parent directory as having content and update timestamps
     ( my $dirname = $mock->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
@@ -3932,11 +3951,12 @@ sub __mkdir (_;$) {
     # This should now start returning content
     $mock->{'has_content'} = 1;
 
-    # POSIX mkdir(2): the new directory's timestamps are set to the current time.
+    # POSIX mkdir(2): the new directory's timestamps and ownership are set.
     my $now = time;
     $mock->{'atime'} = $now;
     $mock->{'mtime'} = $now;
     $mock->{'ctime'} = $now;
+    _apply_ownership($mock);
 
     _update_parent_dir_times($file);
     return 1;
