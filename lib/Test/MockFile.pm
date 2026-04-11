@@ -783,6 +783,38 @@ sub _check_parent_perms {
     return _check_perms( $parent_mock, $access );
 }
 
+# _check_path_perms($path)
+# Checks execute (search) permission on every ancestor directory of $path.
+# POSIX requires execute permission on each directory component to resolve a
+# path.  For example, stat("/a/b/c") needs execute on "/" , "/a", and "/a/b".
+# Returns 1 if allowed, 0 if denied.
+sub _check_path_perms {
+    my ($path) = @_;
+
+    return 1 unless defined $_mock_uid;
+
+    # Root can always traverse directories (search permission is implicit).
+    # The "needs at least one x bit" rule in _check_perms applies to executing
+    # regular files, not to directory traversal.
+    return 1 if $_mock_uid == 0;
+
+    # Walk ancestor directories from root to immediate parent
+    my @components = split m{/}, $path;
+    shift @components;    # drop empty element before leading /
+
+    my $current = '';
+    for my $i ( 0 .. $#components - 1 ) {    # skip the final component
+        $current .= '/' . $components[$i];
+
+        my $dir_mock = $files_being_mocked{$current};
+        next unless $dir_mock;               # not mocked, allow
+
+        return 0 unless _check_perms( $dir_mock, 1 );    # execute
+    }
+
+    return 1;
+}
+
 my @_tmf_callers;
 
 # Packages where autodie was active when T::MF was imported.
@@ -1606,6 +1638,14 @@ sub _mock_stat {
     # File is not present so no stats for you!
     if ( !$file_data->exists() ) {
         $! = ENOENT;
+        return 0;
+    }
+
+    # POSIX: stat/lstat require execute (search) permission on every ancestor
+    # directory in the path.  stat("/a/b/c") fails with EACCES when the caller
+    # lacks execute on "/a" or "/a/b".
+    if ( !ref $file_or_fh && !_check_path_perms($file) ) {
+        $! = EACCES;
         return 0;
     }
 
