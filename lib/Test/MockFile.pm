@@ -85,6 +85,7 @@ use constant S_IFBLK  => 0060000;     # block device
 use constant S_IFDIR  => 0040000;     # directory
 use constant S_IFCHR  => 0020000;     # character device
 use constant S_IFIFO  => 0010000;     # FIFO
+use constant S_ISVTX  => 0001000;     # sticky bit
 
 =head1 SYNOPSIS
 
@@ -781,6 +782,33 @@ sub _check_parent_perms {
     return 1 unless $parent_mock;    # Parent not mocked, skip check
 
     return _check_perms( $parent_mock, $access );
+}
+
+# _check_sticky_bit($parent_path, $file_path)
+# Enforces sticky bit restriction on a directory.
+# When a directory has the sticky bit (S_ISVTX / 01000) set, only the file
+# owner, the directory owner, or root may remove/rename entries.
+# Returns 1 if allowed, 0 if denied.
+sub _check_sticky_bit {
+    my ( $parent_path, $file_path ) = @_;
+
+    return 1 unless defined $_mock_uid;
+    return 1 if $_mock_uid == 0;    # root bypasses sticky bit
+
+    my $parent_mock = _get_file_object($parent_path);
+    return 1 unless $parent_mock;
+
+    # Only applies when sticky bit is set on the parent directory
+    return 1 unless $parent_mock->{'mode'} & S_ISVTX;
+
+    my $file_mock = _get_file_object($file_path);
+    return 1 unless $file_mock;
+
+    # Allowed if user owns the file or owns the directory
+    return 1 if $_mock_uid == $file_mock->{'uid'};
+    return 1 if $_mock_uid == $parent_mock->{'uid'};
+
+    return 0;
 }
 
 my @_tmf_callers;
@@ -3680,6 +3708,16 @@ sub __unlink (@) {
                 $! = EACCES;
                 next;
             }
+
+            # Sticky bit: only file owner, dir owner, or root may remove
+            if ( defined $_mock_uid ) {
+                ( my $parent = $mock->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
+                $parent = '/' if $parent eq '';
+                if ( !_check_sticky_bit( $parent, $mock->{'path'} ) ) {
+                    $! = EACCES;
+                    next;
+                }
+            }
             $files_deleted += $mock->unlink;
         }
     }
@@ -3993,6 +4031,17 @@ sub __rmdir (_) {
         return 0;
     }
 
+    # Sticky bit: only dir owner, parent dir owner, or root may remove
+    if ( defined $_mock_uid ) {
+        ( my $parent = $mock->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
+        $parent = '/' if $parent eq '';
+        if ( !_check_sticky_bit( $parent, $mock->{'path'} ) ) {
+            $! = EACCES;
+            _maybe_throw_autodie( 'rmdir', @_ );
+            return 0;
+        }
+    }
+
     if ( grep { $_->exists } _files_in_dir($file) ) {
         $! = ENOTEMPTY;
         _maybe_throw_autodie( 'rmdir', @_ );
@@ -4040,6 +4089,28 @@ sub __rename ($$) {
 
     # Renaming to self is a no-op (POSIX rename(2))
     return 1 if $mock_old == $mock_new;
+
+    # Sticky bit: source parent dir sticky bit restricts who can move the file
+    if ( defined $_mock_uid ) {
+        ( my $old_parent = $mock_old->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
+        $old_parent = '/' if $old_parent eq '';
+        if ( !_check_sticky_bit( $old_parent, $mock_old->{'path'} ) ) {
+            $! = EACCES;
+            _maybe_throw_autodie( 'rename', @_ );
+            return 0;
+        }
+
+        # If destination exists and its parent has sticky bit, check that too
+        if ( $mock_new->exists ) {
+            ( my $new_parent = $mock_new->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
+            $new_parent = '/' if $new_parent eq '';
+            if ( !_check_sticky_bit( $new_parent, $mock_new->{'path'} ) ) {
+                $! = EACCES;
+                _maybe_throw_autodie( 'rename', @_ );
+                return 0;
+            }
+        }
+    }
 
     # Can't overwrite a directory with a non-directory
     if ( $mock_new->exists && $mock_new->is_dir && !$mock_old->is_dir ) {
