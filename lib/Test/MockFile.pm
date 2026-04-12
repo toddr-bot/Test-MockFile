@@ -3938,6 +3938,12 @@ sub __mkdir (_;$) {
     $mock->{'mtime'} = $now;
     $mock->{'ctime'} = $now;
 
+    # POSIX: new directory's ".." entry increments parent dir's nlink
+    ( my $mkdir_parent = $mock->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
+    if ( length $mkdir_parent && $files_being_mocked{$mkdir_parent} && $files_being_mocked{$mkdir_parent}->is_dir() ) {
+        $files_being_mocked{$mkdir_parent}{'nlink'}++;
+    }
+
     _update_parent_dir_times($file);
     return 1;
 }
@@ -4000,6 +4006,12 @@ sub __rmdir (_) {
     }
 
     $mock->{'has_content'} = undef;
+
+    # POSIX: removing a directory's ".." entry decrements parent dir's nlink
+    ( my $rmdir_parent = $mock->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
+    if ( length $rmdir_parent && $files_being_mocked{$rmdir_parent} && $files_being_mocked{$rmdir_parent}->is_dir() ) {
+        $files_being_mocked{$rmdir_parent}{'nlink'}-- if $files_being_mocked{$rmdir_parent}{'nlink'} > 2;
+    }
 
     _update_parent_dir_times($file);
     return 1;
@@ -4129,6 +4141,21 @@ sub __rename ($$) {
     my $now = time;
     $mock_new->{'ctime'} = $now;
     $mock_old->{'ctime'} = $now;
+
+    # POSIX: renaming a directory moves its ".." entry between parent dirs,
+    # so the old parent's nlink decreases and the new parent's nlink increases.
+    if ( $mock_new->is_dir ) {
+        ( my $old_parent = $mock_old->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
+        ( my $new_parent = $mock_new->{'path'} ) =~ s{ / [^/]+ $ }{}xms;
+        if ( $old_parent ne $new_parent ) {
+            if ( length $old_parent && $files_being_mocked{$old_parent} && $files_being_mocked{$old_parent}->is_dir() ) {
+                $files_being_mocked{$old_parent}{'nlink'}-- if $files_being_mocked{$old_parent}{'nlink'} > 2;
+            }
+            if ( length $new_parent && $files_being_mocked{$new_parent} && $files_being_mocked{$new_parent}->is_dir() ) {
+                $files_being_mocked{$new_parent}{'nlink'}++;
+            }
+        }
+    }
 
     # Update parent directory timestamps (old dir loses entry, new dir gains entry)
     _update_parent_dir_times($old);
