@@ -46,6 +46,20 @@ Overload::FileCheck::unmock_file_check( 'T', 'B' );
 Overload::FileCheck::mock_file_check( '-T' => sub { _mock_fttext(@_) } );
 Overload::FileCheck::mock_file_check( '-B' => sub { _mock_ftbinary(@_) } );
 
+# Override -r/-w/-x/-o/-R/-W/-X/-O handlers so they respect set_user().
+# The -from-stat mode derives these from the real process uid/gid via Perl's
+# stat cache (_), which ignores the mock user entirely.  When set_user() is
+# active we compute the result from mock permission bits instead.
+Overload::FileCheck::unmock_file_check( 'r', 'w', 'x', 'o', 'R', 'W', 'X', 'O' );
+Overload::FileCheck::mock_file_check( '-r' => sub { _mock_ftaccess( @_, 4 ) } );
+Overload::FileCheck::mock_file_check( '-w' => sub { _mock_ftaccess( @_, 2 ) } );
+Overload::FileCheck::mock_file_check( '-x' => sub { _mock_ftaccess( @_, 1 ) } );
+Overload::FileCheck::mock_file_check( '-o' => sub { _mock_ftowned(@_) } );
+Overload::FileCheck::mock_file_check( '-R' => sub { _mock_ftaccess( @_, 4 ) } );
+Overload::FileCheck::mock_file_check( '-W' => sub { _mock_ftaccess( @_, 2 ) } );
+Overload::FileCheck::mock_file_check( '-X' => sub { _mock_ftaccess( @_, 1 ) } );
+Overload::FileCheck::mock_file_check( '-O' => sub { _mock_ftowned(@_) } );
+
 use Errno qw/EPERM EACCES ENOENT EBADF ELOOP ENOTEMPTY EEXIST EISDIR ENOTDIR EINVAL EXDEV/;
 
 use constant FOLLOW_LINK_MAX_DEPTH => 10;
@@ -1724,6 +1738,64 @@ sub _mock_ftbinary {
     return CHECK_IS_TRUE if !defined $contents || !length $contents;
 
     return _is_text_data($contents) ? CHECK_IS_FALSE : CHECK_IS_TRUE;
+}
+
+# Custom handler for -r/-w/-x/-R/-W/-X that respects set_user().
+# $access is a bitmask: 4=read, 2=write, 1=execute.
+# When no mock user is set, checks against the real process effective uid/gid.
+sub _mock_ftaccess {
+    my ( $file_or_fh, $access ) = @_;
+
+    my ( $file_data, $early_return ) = _resolve_mock_for_ftcheck($file_or_fh);
+    return $early_return if defined $early_return;
+
+    if ( defined $_mock_uid ) {
+        return _check_perms( $file_data, $access ) ? CHECK_IS_TRUE : CHECK_IS_FALSE;
+    }
+
+    # No mock user — check against real process euid/egids.
+    return _check_perms_real( $file_data, $access ) ? CHECK_IS_TRUE : CHECK_IS_FALSE;
+}
+
+# Custom handler for -o/-O that respects set_user().
+# Returns true if the uid matches the file's uid.
+sub _mock_ftowned {
+    my ($file_or_fh) = @_;
+
+    my ( $file_data, $early_return ) = _resolve_mock_for_ftcheck($file_or_fh);
+    return $early_return if defined $early_return;
+
+    my $uid = defined $_mock_uid ? $_mock_uid : $>;
+    return $uid == $file_data->{'uid'} ? CHECK_IS_TRUE : CHECK_IS_FALSE;
+}
+
+# Like _check_perms but uses the real process effective uid/gid.
+# Used by file test operators when set_user() is NOT active.
+sub _check_perms_real {
+    my ( $mock, $access ) = @_;
+
+    my $euid = $>;
+    my @egids = split ' ', $);
+
+    my $mode = $mock->{'mode'} & S_IFPERMS;
+
+    # Root bypass
+    if ( $euid == 0 ) {
+        return ( $access & 1 ) ? ( $mode & 0111 ? 1 : 0 ) : 1;
+    }
+
+    my $bits;
+    if ( $euid == $mock->{'uid'} ) {
+        $bits = ( $mode >> 6 ) & 07;
+    }
+    elsif ( grep { $_ == $mock->{'gid'} } @egids ) {
+        $bits = ( $mode >> 3 ) & 07;
+    }
+    else {
+        $bits = $mode & 07;
+    }
+
+    return ( $bits & $access ) == $access ? 1 : 0;
 }
 
 sub _is_path_mocked {
