@@ -303,5 +303,46 @@ note "sysopen failure returns undef in list context (single-element list)";
     ok( !defined $ret[0],        'sysopen failure element is undef (not "undef" string)' );
 }
 
+# POSIX: O_EXCL | O_CREAT must fail with EEXIST when the path is a symlink,
+# regardless of where it points.  This prevents symlink race attacks.
+{
+    use Errno qw/EEXIST/;
+
+    note "-------------- O_EXCL rejects symlinks (POSIX) --------------";
+
+    # Symlink to an existing target
+    my $target = Test::MockFile->file( '/oexcl_sym_target', 'data' );
+    my $link   = Test::MockFile->symlink( '/oexcl_sym_target', '/oexcl_sym_link' );
+
+    $! = 0;
+    my $ret = sysopen( my $fh, '/oexcl_sym_link', O_CREAT | O_EXCL | O_WRONLY, 0644 );
+    my $err = $! + 0;
+    ok( !$ret,            'O_EXCL | O_CREAT fails when path is a symlink to existing file' );
+    is( $err, EEXIST + 0, 'errno is EEXIST for symlink with O_EXCL' );
+
+    # Symlink to a non-existent target (broken symlink)
+    my $broken_link = Test::MockFile->symlink( '/oexcl_no_such_target', '/oexcl_broken_link' );
+
+    $! = 0;
+    $ret = sysopen( my $fh2, '/oexcl_broken_link', O_CREAT | O_EXCL | O_WRONLY, 0644 );
+    $err = $! + 0;
+    ok( !$ret,            'O_EXCL | O_CREAT fails when path is a broken symlink' );
+    is( $err, EEXIST + 0, 'errno is EEXIST for broken symlink with O_EXCL' );
+
+    # Non-symlink with O_EXCL on non-existent file should succeed
+    my $new_file = Test::MockFile->file('/oexcl_new_file');
+    $ret = sysopen( my $fh3, '/oexcl_new_file', O_CREAT | O_EXCL | O_WRONLY, 0644 );
+    ok( $ret, 'O_EXCL | O_CREAT succeeds on non-existent non-symlink path' );
+    close $fh3 if $ret;
+
+    # Non-symlink with O_EXCL on existing file should fail
+    my $existing = Test::MockFile->file( '/oexcl_existing', 'content' );
+    $! = 0;
+    $ret = sysopen( my $fh4, '/oexcl_existing', O_CREAT | O_EXCL | O_WRONLY, 0644 );
+    $err = $! + 0;
+    ok( !$ret,            'O_EXCL | O_CREAT fails on existing regular file' );
+    is( $err, EEXIST + 0, 'errno is EEXIST for existing regular file' );
+}
+
 done_testing();
 exit;

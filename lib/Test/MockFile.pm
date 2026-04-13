@@ -3257,6 +3257,19 @@ sub __sysopen (*$$;$) {
     # Resolve the path, following symlinks unless O_NOFOLLOW is set.
     my $mock_file;
     my $abs_path;
+
+    # POSIX: O_EXCL | O_CREAT must fail with EEXIST if the path names a
+    # symbolic link, regardless of where it points.  This prevents symlink
+    # race attacks (TOCTOU) and must be checked before we follow links.
+    if ( ( $sysopen_mode & O_EXCL ) && ( $sysopen_mode & O_CREAT ) ) {
+        my $direct_mock = _get_file_object( $_[1] );
+        if ( $direct_mock && $direct_mock->is_link ) {
+            $! = EEXIST;
+            _maybe_throw_autodie( 'sysopen', @_ );
+            return undef;
+        }
+    }
+
     if ( $sysopen_mode & O_NOFOLLOW ) {
         $mock_file = _get_file_object( $_[1] );
         if ( $mock_file && $mock_file->is_link ) {
