@@ -169,5 +169,20 @@ note "-------------- getc on write-only handle --------------";
     close $wfh;
 }
 
+note "-------------- printf on read-only handle --------------";
+{
+    my $baz = Test::MockFile->file( '/printf_readonly', "XY" );
+    open( my $rfh, '<', '/printf_readonly' ) or die "open: $!";
+
+    my $warn_msg;
+    local $SIG{__WARN__} = sub { $warn_msg = shift };
+    my $ret = printf {$rfh} "test %s", "foo";
+    ok( !defined $ret, 'printf on read-only handle returns undef' );
+    is( $! + 0, EBADF, 'printf on read-only handle sets $! to EBADF' );
+    like( $warn_msg, qr{^Filehandle .+? opened only for input at .+? line \d+\.$}, 'printf on read-only handle warns with file/line' );
+
+    close $rfh;
+}
+
 done_testing();
 exit;

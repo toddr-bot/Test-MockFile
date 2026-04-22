@@ -138,9 +138,10 @@ sub PRINT {
 
     if ( !$self->{'write'} ) {
 
-        # Filehandle $fh opened only for input at t/readline.t line 27, <$fh> line 2.
-        # https://github.com/cpanel/Test-MockFile/issues/1
-        CORE::warn("Filehandle ???? opened only for input at ???? line ???, <???> line ???.");
+        # Match real Perl's warning format:
+        # "Filehandle NAME opened only for input at FILE line LINE."
+        my $path = $self->{'file'} // 'unknown';
+        CORE::warn("Filehandle $path opened only for input at @{[ join ' line ', (caller)[1,2] ]}.\n");
         $! = EBADF;
         return;
     }
@@ -185,6 +186,8 @@ sub PRINTF {
     my $format = shift;
 
     if ( !$self->{'write'} ) {
+        my $path = $self->{'file'} // 'unknown';
+        CORE::warn("Filehandle $path opened only for input at @{[ join ' line ', (caller)[1,2] ]}.\n");
         $! = EBADF;
         return;
     }
@@ -345,7 +348,7 @@ sub READLINE {
 
     if ( !$self->{'read'} ) {
         my $path = $self->{'file'} // 'unknown';
-        CORE::warn("Filehandle $path opened only for output");
+        CORE::warn("Filehandle $path opened only for output at @{[ join ' line ', (caller)[1,2] ]}.\n");
         return;
     }
 
@@ -387,7 +390,7 @@ sub GETC {
 
     if ( !$self->{'read'} ) {
         my $path = $self->{'file'} // 'unknown';
-        CORE::warn("Filehandle $path opened only for output");
+        CORE::warn("Filehandle $path opened only for output at @{[ join ' line ', (caller)[1,2] ]}.\n");
         return undef;
     }
 
@@ -544,7 +547,7 @@ sub EOF {
 
     if ( !$self->{'read'} ) {
         my $path = $self->{'file'} // 'unknown';
-        CORE::warn("Filehandle $path opened only for output");
+        CORE::warn("Filehandle $path opened only for output at @{[ join ' line ', (caller)[1,2] ]}.\n");
     }
     return $self->{'tell'} >= length $data->{'contents'};
 }
