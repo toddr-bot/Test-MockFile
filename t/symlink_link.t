@@ -313,4 +313,116 @@ note "-------------- link() builtin on mocked paths --------------";
     is( ( stat('/mock/hl_c') )[1], $inode, 'C has same inode as A' );
 }
 
+{
+    note "hard links share data — writes through one are visible through the other";
+    my $src  = Test::MockFile->file( '/mock/hl_src', 'original' );
+    my $dest = Test::MockFile->file('/mock/hl_dst');
+
+    link( '/mock/hl_src', '/mock/hl_dst' );
+
+    # Write through source path
+    open my $fh, '>', '/mock/hl_src' or die $!;
+    print $fh "updated via source";
+    close $fh;
+
+    # Read through destination path — should see the update
+    open my $fh2, '<', '/mock/hl_dst' or die $!;
+    my $content = do { local $/; <$fh2> };
+    close $fh2;
+    is( $content, 'updated via source', 'write through source visible via hard link' );
+}
+
+{
+    note "hard links share data — writes through destination visible via source";
+    my $src  = Test::MockFile->file( '/mock/hl2_src', 'original' );
+    my $dest = Test::MockFile->file('/mock/hl2_dst');
+
+    link( '/mock/hl2_src', '/mock/hl2_dst' );
+
+    # Write through destination path
+    open my $fh, '>', '/mock/hl2_dst' or die $!;
+    print $fh "updated via dest";
+    close $fh;
+
+    # Read through source path
+    open my $fh2, '<', '/mock/hl2_src' or die $!;
+    my $content = do { local $/; <$fh2> };
+    close $fh2;
+    is( $content, 'updated via dest', 'write through hard link visible via source' );
+}
+
+{
+    note "hard links share data — append mode propagates";
+    my $src  = Test::MockFile->file( '/mock/hl3_src', 'start' );
+    my $dest = Test::MockFile->file('/mock/hl3_dst');
+
+    link( '/mock/hl3_src', '/mock/hl3_dst' );
+
+    # Append through destination
+    open my $fh, '>>', '/mock/hl3_dst' or die $!;
+    print $fh "+appended";
+    close $fh;
+
+    is( $src->contents(), 'start+appended', 'append through hard link visible via source mock' );
+}
+
+{
+    note "hard links share data — syswrite propagates";
+    my $src  = Test::MockFile->file( '/mock/hl4_src', 'AAAA' );
+    my $dest = Test::MockFile->file('/mock/hl4_dst');
+
+    link( '/mock/hl4_src', '/mock/hl4_dst' );
+
+    # syswrite through destination
+    sysopen my $fh, '/mock/hl4_dst', 2 or die $!;    # O_RDWR
+    syswrite $fh, 'BB', 2;
+    close $fh;
+
+    is( $src->contents(), 'BBAA', 'syswrite through hard link visible via source mock' );
+}
+
+{
+    note "hard links share data — truncation via open propagates";
+    my $src  = Test::MockFile->file( '/mock/hl5_src', 'long content here' );
+    my $dest = Test::MockFile->file('/mock/hl5_dst');
+
+    link( '/mock/hl5_src', '/mock/hl5_dst' );
+
+    # Truncate via open('>')
+    open my $fh, '>', '/mock/hl5_dst' or die $!;
+    close $fh;
+
+    is( $src->contents(), '', 'truncation through hard link visible via source mock' );
+}
+
+{
+    note "hard links share data — truncate() propagates";
+    my $src  = Test::MockFile->file( '/mock/hl6_src', 'long content' );
+    my $dest = Test::MockFile->file('/mock/hl6_dst');
+
+    link( '/mock/hl6_src', '/mock/hl6_dst' );
+
+    truncate( '/mock/hl6_dst', 4 );
+
+    is( $src->contents(), 'long', 'truncate() through hard link visible via source mock' );
+}
+
+{
+    note "hard links share data — three-way link propagation";
+    my $a = Test::MockFile->file( '/mock/hl7_a', 'init' );
+    my $b = Test::MockFile->file('/mock/hl7_b');
+    my $c = Test::MockFile->file('/mock/hl7_c');
+
+    link( '/mock/hl7_a', '/mock/hl7_b' );
+    link( '/mock/hl7_a', '/mock/hl7_c' );
+
+    # Write through B
+    open my $fh, '>', '/mock/hl7_b' or die $!;
+    print $fh "from B";
+    close $fh;
+
+    is( $a->contents(), 'from B', 'three-way link: A sees write from B' );
+    is( $c->contents(), 'from B', 'three-way link: C sees write from B' );
+}
+
 done_testing();

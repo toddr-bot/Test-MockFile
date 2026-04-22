@@ -2133,6 +2133,7 @@ sub contents {
               and confess('File contents must be a simple string');
 
             $self->{'contents'} = $new_contents;
+            $self->_sync_hardlink_contents();
         }
 
         return $self->{'contents'};
@@ -2340,6 +2341,25 @@ sub unlink {
 
     _update_parent_dir_times( $self->path );
     return 1;
+}
+
+# Propagate contents to all hard-linked mocks sharing the same inode.
+# POSIX hard links share the same data — writing to one must be visible
+# through all other paths pointing to the same inode.
+sub _sync_hardlink_contents {
+    my ($self) = @_;
+    my $nlink = $self->{'nlink'} // 1;
+    return if $nlink <= 1;
+
+    my $inode = $self->{'inode'} or return;
+    my $contents = $self->{'contents'};
+    for my $path ( keys %files_being_mocked ) {
+        my $m = $files_being_mocked{$path};
+        next if !$m || $m == $self;
+        next if !$m->exists;
+        next if !defined $m->{'inode'} || $m->{'inode'} != $inode;
+        $m->{'contents'} = $contents;
+    }
 }
 
 =head2 touch
@@ -3222,6 +3242,9 @@ sub __open (*;$@) {
             $mock_file->{'mtime'} = $now;
             $mock_file->{'ctime'} = $now;
         }
+
+        # Truncation via open must propagate to hard-linked mocks.
+        $mock_file->_sync_hardlink_contents();
     }
 
     # POSIX open(2): creating a new file sets atime, mtime, and ctime.

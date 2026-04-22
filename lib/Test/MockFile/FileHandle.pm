@@ -130,6 +130,9 @@ sub _write_bytes {
         $self->{'tell'} = $tell + length($output);
     }
 
+    # Propagate contents to any hard-linked mocks sharing the same inode.
+    $data->_sync_hardlink_contents() if ($data->{'nlink'} // 1) > 1;
+
     return length($output);
 }
 
