@@ -245,7 +245,7 @@ my $content = "ABCDEFGHIJ";
 }
 
 {
-    note "--- EOF warning mentions file path (not STDOUT) ---";
+    note "--- eof() on write-only handle: no warning (matches real Perl) ---";
 
     my $mock = Test::MockFile->file( '/fake/eof_warn', $content );
     sysopen( my $fh, '/fake/eof_warn', O_WRONLY | O_CREAT ) or die;
@@ -255,9 +255,8 @@ my $content = "ABCDEFGHIJ";
 
     my $is_eof = eof($fh);
 
-    is( scalar @warnings, 1, "eof() on write-only handle emits one warning" );
-    like( $warnings[0], qr{/fake/eof_warn}, "warning mentions the file path, not STDOUT" );
-    unlike( $warnings[0], qr{STDOUT}, "warning does not mention STDOUT" );
+    is( scalar @warnings, 0, "eof() on write-only handle emits no warning (matches real Perl)" );
+    ok( $is_eof, "eof() returns true on write-only handle" );
 
     close $fh;
 }

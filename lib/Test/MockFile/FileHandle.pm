@@ -542,10 +542,9 @@ sub EOF {
 
     my $data = $self->{'data'} or return 1;
 
-    if ( !$self->{'read'} ) {
-        my $path = $self->{'file'} // 'unknown';
-        CORE::warn("Filehandle $path opened only for output");
-    }
+    # Write-only handles are always at EOF for reading purposes (matches real Perl).
+    return 1 if !$self->{'read'};
+
     return $self->{'tell'} >= length $data->{'contents'};
 }
 
