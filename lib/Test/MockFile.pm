@@ -1859,8 +1859,8 @@ sub _fh_to_file {
             }
         }
 
-        # Check dir handle (stored as stringified handle)
-        if ( $mock->{'fh'} && $mock->{'fh'} eq "$fh" ) {
+        # Check dir handles (multiple concurrent handles per directory)
+        if ( $mock->{'dir_handles'} && exists $mock->{'dir_handles'}{"$fh"} ) {
             return $path;
         }
     }
@@ -3475,10 +3475,10 @@ sub __opendir (*$) {
         *{ $_[0] } = Symbol::geniosym;
     }
 
-    # This is how we tell if the file is open by something.
-    # $abs_path already holds the resolved path from _find_file_or_fh above.
-    $mock_dir->{'obj'} = Test::MockFile::DirHandle->new( $abs_path, $mock_dir->contents() );
-    $mock_dir->{'fh'}  = "$_[0]";
+    # Track per-handle DirHandle objects so multiple concurrent opendir
+    # calls on the same directory each maintain independent iteration state.
+    $mock_dir->{'dir_handles'} //= {};
+    $mock_dir->{'dir_handles'}{"$_[0]"} = Test::MockFile::DirHandle->new( $abs_path, $mock_dir->contents() );
 
     return 1;
 
@@ -3498,7 +3498,7 @@ sub __readdir (*) {
         return CORE::readdir( $_[0] );
     }
 
-    my $obj = $mocked_dir->{'obj'};
+    my $obj = $mocked_dir->{'dir_handles'} && $mocked_dir->{'dir_handles'}{"$_[0]"};
     if ( !$obj ) {
         warnings::warnif( 'io', "readdir() attempted on invalid dirhandle $_[0]" );
         return;
@@ -3544,12 +3544,11 @@ sub __telldir (*) {
         return CORE::telldir($fh);
     }
 
-    if ( !$mocked_dir->{'obj'} ) {
+    my $obj = $mocked_dir->{'dir_handles'} && $mocked_dir->{'dir_handles'}{"$fh"};
+    if ( !$obj ) {
         warnings::warnif( 'io', "telldir() attempted on invalid dirhandle $fh" );
         return undef;
     }
-
-    my $obj = $mocked_dir->{'obj'};
 
     if ( !defined $obj->{'files_in_readdir'} ) {
         confess("Did a telldir on an empty dir. This shouldn't have been able to have been opened!");
@@ -3577,12 +3576,11 @@ sub __rewinddir (*) {
         return CORE::rewinddir( $_[0] );
     }
 
-    if ( !$mocked_dir->{'obj'} ) {
+    my $obj = $mocked_dir->{'dir_handles'} && $mocked_dir->{'dir_handles'}{"$fh"};
+    if ( !$obj ) {
         warnings::warnif( 'io', "rewinddir() attempted on invalid dirhandle $fh" );
         return;
     }
-
-    my $obj = $mocked_dir->{'obj'};
 
     if ( !defined $obj->{'files_in_readdir'} ) {
         confess("Did a rewinddir on an empty dir. This shouldn't have been able to have been opened!");
@@ -3611,12 +3609,11 @@ sub __seekdir (*$) {
         return CORE::seekdir( $fh, $goto );
     }
 
-    if ( !$mocked_dir->{'obj'} ) {
+    my $obj = $mocked_dir->{'dir_handles'} && $mocked_dir->{'dir_handles'}{"$fh"};
+    if ( !$obj ) {
         warnings::warnif( 'io', "seekdir() attempted on invalid dirhandle $fh" );
         return;
     }
-
-    my $obj = $mocked_dir->{'obj'};
 
     if ( !defined $obj->{'files_in_readdir'} ) {
         confess("Did a seekdir on an empty dir. This shouldn't have been able to have been opened!");
@@ -3648,17 +3645,17 @@ sub __closedir (*) {
         return CORE::closedir($fh);
     }
 
-    # Already closed — warn and return EBADF like real closedir
-    if ( !$mocked_dir->{'obj'} ) {
+    # Already closed or never opened — warn and return EBADF like real closedir
+    my $dh_key = "$fh";
+    if ( !$mocked_dir->{'dir_handles'} || !$mocked_dir->{'dir_handles'}{$dh_key} ) {
         warnings::warnif( 'io', "closedir() attempted on invalid dirhandle $fh" );
         $! = EBADF;
         _maybe_throw_autodie( 'closedir', @_ );
         return undef;
     }
 
-    delete $mocked_dir->{'obj'};
-
-    # Keep $mocked_dir->{'fh'} so double-close is detected as mock, not CORE
+    # Set to undef (keep key so double-close is detected as mock, not CORE)
+    $mocked_dir->{'dir_handles'}{$dh_key} = undef;
 
     return 1;
 }

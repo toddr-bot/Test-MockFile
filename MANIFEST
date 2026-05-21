@@ -24,6 +24,7 @@ t/chmod-filetemp.t
 t/chmod.t
 t/chown-chmod-nostrict.t
 t/chown.t
+t/concurrent_opendir.t
 t/creation_timestamps.t
 t/cwd_abs_path.t
 t/detect-common-mistakes.t
