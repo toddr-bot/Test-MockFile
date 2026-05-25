@@ -783,6 +783,37 @@ sub _check_parent_perms {
     return _check_perms( $parent_mock, $access );
 }
 
+# _check_path_perms($path)
+# POSIX path traversal: checks execute (search) permission on ALL ancestor
+# directories from root to the parent of $path. Returns 1 if traversal is
+# allowed, 0 if denied (caller should set $! = EACCES).
+sub _check_path_perms {
+    my ($path) = @_;
+
+    return 1 unless defined $_mock_uid;
+
+    my $root_mock = _get_file_object('/');
+    if ( $root_mock && !_check_perms( $root_mock, 1 ) ) {
+        return 0;
+    }
+
+    my @parts = split m{/}, $path;
+    shift @parts;    # empty string before leading /
+    pop @parts;      # the target name itself
+
+    my $dir = '';
+    for my $part (@parts) {
+        $dir .= "/$part";
+        my $mock = _get_file_object($dir);
+        next unless $mock;
+        if ( !_check_perms( $mock, 1 ) ) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
 my @_tmf_callers;
 
 # Packages where autodie was active when T::MF was imported.
@@ -1606,6 +1637,13 @@ sub _mock_stat {
     # File is not present so no stats for you!
     if ( !$file_data->exists() ) {
         $! = ENOENT;
+        return 0;
+    }
+
+    # Path traversal check: all ancestor dirs need execute permission.
+    # Filehandle-based stat bypasses this (handle is already open).
+    if ( !ref $file_or_fh && !_check_path_perms($file) ) {
+        $! = EACCES;
         return 0;
     }
 
@@ -3166,6 +3204,13 @@ sub __open (*;$@) {
     $rw .= 'w' if grep { $_ eq $mode } qw/+< +> +>> > >>/;
     $rw .= 'a' if grep { $_ eq $mode } qw/>> +>>/;
 
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms($abs_path) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'open', @_ );
+        return undef;
+    }
+
     # Permission check (GH #3) — IO::File path must match __open
     if ( defined $_mock_uid ) {
         if ( defined $contents ) {
@@ -3370,6 +3415,13 @@ sub __sysopen (*$$;$) {
         return undef;
     }
 
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms( $mock_file->{'path'} ) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'sysopen', @_ );
+        return undef;
+    }
+
     # Permission check (GH #3)
     if ( defined $_mock_uid ) {
         if ( defined $mock_file->{'contents'} ) {
@@ -3456,6 +3508,13 @@ sub __opendir (*$) {
 
     if ( !( $mock_dir->{'mode'} & S_IFDIR ) ) {
         $! = ENOTDIR;
+        _maybe_throw_autodie( 'opendir', @_ );
+        return undef;
+    }
+
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms( $mock_dir->{'path'} ) ) {
+        $! = EACCES;
         _maybe_throw_autodie( 'opendir', @_ );
         return undef;
     }
@@ -3675,6 +3734,12 @@ sub __unlink (@) {
             $files_deleted += CORE::unlink($file);
         }
         else {
+            # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+            if ( !_check_path_perms( $mock->{'path'} ) ) {
+                $! = EACCES;
+                next;
+            }
+
             # Permission check: unlink needs write+execute on parent dir (GH #3)
             if ( defined $_mock_uid && !_check_parent_perms( $mock->{'path'}, 2 | 1 ) ) {
                 $! = EACCES;
@@ -3720,6 +3785,13 @@ sub __readlink (_) {
         return undef;
     }
 
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms( $mock_object->{'path'} ) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'readlink', @_ );
+        return undef;
+    }
+
     if ( !$mock_object->is_link ) {
         $! = EINVAL;
         _maybe_throw_autodie( 'readlink', @_ );
@@ -3744,6 +3816,13 @@ sub __symlink ($$) {
         _real_file_access_hook( 'symlink', \@_ );
         goto \&CORE::symlink if _goto_is_available();
         return CORE::symlink( $oldname, $newname );
+    }
+
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms( $mock->{'path'} ) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'symlink', @_ );
+        return 0;
     }
 
     if ( $mock->exists ) {
@@ -3795,6 +3874,18 @@ sub __link ($$) {
     # Source must exist
     if ( !$old_mock || !$old_mock->exists ) {
         $! = ENOENT;
+        _maybe_throw_autodie( 'link', @_ );
+        return 0;
+    }
+
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms( $old_mock->{'path'} ) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'link', @_ );
+        return 0;
+    }
+    if ( $new_mock && !_check_path_perms( $new_mock->{'path'} ) ) {
+        $! = EACCES;
         _maybe_throw_autodie( 'link', @_ );
         return 0;
     }
@@ -3910,6 +4001,13 @@ sub __mkdir (_;$) {
         return CORE::mkdir(@_);
     }
 
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms( $mock->{'path'} ) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'mkdir', @_ );
+        return 0;
+    }
+
     # Permission check: mkdir needs write+execute on parent dir (GH #3)
     if ( defined $_mock_uid && !_check_parent_perms( $mock->{'path'}, 2 | 1 ) ) {
         $! = EACCES;
@@ -3986,6 +4084,13 @@ sub __rmdir (_) {
         return 0;
     }
 
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms( $mock->{'path'} ) ) {
+        $! = EACCES;
+        _maybe_throw_autodie( 'rmdir', @_ );
+        return 0;
+    }
+
     # Permission check: rmdir needs write+execute on parent dir (GH #3)
     if ( defined $_mock_uid && !_check_parent_perms( $mock->{'path'}, 2 | 1 ) ) {
         $! = EACCES;
@@ -4034,6 +4139,13 @@ sub __rename ($$) {
     # Source must exist
     if ( !$mock_old->exists ) {
         $! = ENOENT;
+        _maybe_throw_autodie( 'rename', @_ );
+        return 0;
+    }
+
+    # POSIX path traversal: all ancestor dirs must have execute (GH #390)
+    if ( !_check_path_perms( $mock_old->{'path'} ) || !_check_path_perms( $mock_new->{'path'} ) ) {
+        $! = EACCES;
         _maybe_throw_autodie( 'rename', @_ );
         return 0;
     }
@@ -4220,6 +4332,12 @@ sub __chown (@) {
             next;
         }
 
+        # POSIX path traversal (GH #390)
+        if ( !_check_path_perms( $mock->{'path'} ) ) {
+            $! = EACCES;
+            next;
+        }
+
         # -1 means "keep as is" — preserve the file's current value
         $mock->{'uid'} = $uid == -1 ? $mock->{'uid'} : $uid;
         $mock->{'gid'} = $gid == -1 ? $mock->{'gid'} : $gid;
@@ -4291,6 +4409,12 @@ sub __chmod (@) {
         # chmod $mode, '/foo/' still yields ENOENT
         if ( !$mock->exists() ) {
             $! = ENOENT;
+            next;
+        }
+
+        # POSIX path traversal (GH #390)
+        if ( !_check_path_perms( $mock->{'path'} ) ) {
+            $! = EACCES;
             next;
         }
 
@@ -4375,6 +4499,12 @@ sub __utime (@) {
             next;
         }
 
+        # POSIX path traversal (GH #390)
+        if ( !_check_path_perms( $mock->{'path'} ) ) {
+            $! = EACCES;
+            next;
+        }
+
         $mock->{'atime'} = defined $atime ? $atime : $now;
         $mock->{'mtime'} = defined $mtime ? $mtime : $now;
         $mock->{'ctime'} = $now;
@@ -4420,6 +4550,13 @@ sub __truncate ($$) {
 
     if ( !$mock->exists() ) {
         $! = ENOENT;
+        _maybe_throw_autodie( 'truncate', @_ );
+        return 0;
+    }
+
+    # POSIX path traversal (GH #390) — skip for filehandle-based calls
+    if ( !ref $file_or_fh && !_check_path_perms( $mock->{'path'} ) ) {
+        $! = EACCES;
         _maybe_throw_autodie( 'truncate', @_ );
         return 0;
     }
