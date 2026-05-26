@@ -3188,7 +3188,7 @@ sub __open (*;$@) {
     }
 
     my $filefh = IO::File->new;
-    tie *{$filefh}, 'Test::MockFile::FileHandle', $abs_path, $rw;
+    tie *{$filefh}, 'Test::MockFile::FileHandle', $abs_path, $rw, $encoding_mode;
 
     if ($likely_bareword) {
         my $caller = caller();

@@ -10,6 +10,7 @@ package Test::MockFile::FileHandle;
 use strict;
 use warnings;
 use Errno qw/EBADF EINVAL/;
+use Encode ();
 use Scalar::Util ();
 
 our $VERSION = '0.039';
@@ -64,7 +65,7 @@ See L<Test::MockFile> for more info.
 =cut
 
 sub TIEHANDLE {
-    my ( $class, $file, $mode ) = @_;
+    my ( $class, $file, $mode, $encoding_mode ) = @_;
 
     length $file or die("No file name passed!");
 
@@ -76,10 +77,13 @@ sub TIEHANDLE {
         'write'       => $mode =~ m/w/ ? 1 : 0,
         'append'      => $mode =~ m/a/ ? 1 : 0,
         'line_number' => 0,
+        'encoding'    => undef,
     }, $class;
 
     # This ref count can't hold the object from getting released.
     Scalar::Util::weaken( $self->{'data'} );
+
+    $self->_apply_encoding_mode($encoding_mode) if $encoding_mode;
 
     return $self;
 }
@@ -161,6 +165,8 @@ sub PRINT {
         $! = EBADF;
         return 0;
     };
+
+    $output = Encode::encode( $self->{'encoding'}, $output, Encode::FB_DEFAULT ) if $self->{'encoding'};
 
     my $bytes = $self->_write_bytes($output);
     $self->_update_write_times() if $bytes;
@@ -351,11 +357,14 @@ sub READLINE {
 
     return if $self->EOF;
 
+    my $enc = $self->{'encoding'};
+
     if (wantarray) {
         my @all;
         my $line = _READLINE_ONE_LINE($self);
         while ( defined $line ) {
             $self->{'line_number'}++;
+            $line = Encode::decode( $enc, $line, Encode::FB_DEFAULT ) if $enc;
             push @all, $line;
             $line = _READLINE_ONE_LINE($self);
         }
@@ -368,6 +377,7 @@ sub READLINE {
 
     my $line = _READLINE_ONE_LINE($self);
     if ( defined $line ) {
+        $line = Encode::decode( $enc, $line, Encode::FB_DEFAULT ) if $enc;
         $. = ++$self->{'line_number'};
         $self->_update_read_time();
     }
@@ -394,6 +404,18 @@ sub GETC {
     return undef if $self->EOF;
 
     my $data = $self->{'data'} or return undef;
+
+    if ( $self->{'encoding'} ) {
+        my $remaining = substr( $data->{'contents'}, $self->{'tell'} );
+        my $decoded   = Encode::decode( $self->{'encoding'}, $remaining, Encode::FB_DEFAULT );
+        return undef unless length $decoded;
+        my $char      = substr( $decoded, 0, 1 );
+        my $raw_bytes = Encode::encode( $self->{'encoding'}, $char, Encode::FB_DEFAULT );
+        $self->{'tell'} += length($raw_bytes);
+        $self->_update_read_time();
+        return $char;
+    }
+
     my $char = substr( $data->{'contents'}, $self->{'tell'}, 1 );
     $self->{'tell'}++;
     $self->_update_read_time();
@@ -454,10 +476,22 @@ sub READ {
     # If tell is at or past the end of contents, nothing to read (EOF)
     return 0 if $tell >= $contents_len;
 
+    if ( $self->{'encoding'} ) {
+        my $remaining = substr( $data->{'contents'}, $tell );
+        my $decoded   = Encode::decode( $self->{'encoding'}, $remaining, Encode::FB_DEFAULT );
+        my $chars     = substr( $decoded, 0, $len );
+        my $raw_bytes = Encode::encode( $self->{'encoding'}, $chars, Encode::FB_DEFAULT );
+        my $byte_len  = length($raw_bytes);
+
+        substr( $_[1], $offset ) = $chars;
+        $self->{'tell'} += $byte_len;
+        $self->_update_read_time() if $byte_len;
+        return length($chars);
+    }
+
     my $read_len = ( $contents_len - $tell < $len ) ? $contents_len - $tell : $len;
 
     substr( $_[1], $offset ) = substr( $data->{'contents'}, $tell, $read_len );
-
     $self->{'tell'} += $read_len;
     $self->_update_read_time() if $read_len;
 
@@ -562,8 +596,39 @@ exists on this method.
 
 =cut
 
+sub _apply_encoding_mode {
+    my ( $self, $mode ) = @_;
+
+    return unless defined $mode;
+
+    if ( $mode =~ /:raw/ || $mode =~ /:bytes/ ) {
+        $self->{'encoding'} = undef;
+    }
+
+    if ( $mode =~ /:encoding\(([^)]+)\)/ ) {
+        my $enc = $1;
+        my $obj = Encode::find_encoding($enc);
+        if ($obj) {
+            $self->{'encoding'} = $obj->name;
+        }
+        else {
+            CORE::warn("Unknown encoding '$enc'");
+        }
+    }
+    elsif ( $mode =~ /:utf8/ ) {
+        $self->{'encoding'} = 'utf-8-strict';
+    }
+
+    return;
+}
+
 sub BINMODE {
-    my ($self) = @_;
+    my ( $self, $mode ) = @_;
+
+    if ( defined $mode ) {
+        $self->_apply_encoding_mode($mode);
+    }
+
     return 1;
 }
 
