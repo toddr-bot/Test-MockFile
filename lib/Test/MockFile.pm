@@ -33,6 +33,7 @@ use Test::MockFile::DirHandle  ();
 use Text::Glob                 ();
 use File::Glob                 ();
 use Scalar::Util               ();
+use bytes                      ();
 
 use Symbol;
 
@@ -2476,15 +2477,16 @@ returns the size of the file based on its contents.
 sub size {
     my ($self) = @_;
 
-    # Lstat for a symlink returns the length of the target path.
-    return length( $self->{'readlink'} ) if $self->is_link;
+    # Lstat for a symlink returns the byte length of the target path.
+    return bytes::length( $self->{'readlink'} ) if $self->is_link;
 
     # Directories have a fixed size (typically one filesystem block).
     # Previously, length($arrayref) stringified the contents() return,
     # producing a nonsensical ~20-byte value.
     return $self->{'blksize'} if $self->is_dir;
 
-    return length $self->contents;
+    # stat(2) st_size is always in bytes, not characters.
+    return bytes::length( $self->contents );
 }
 
 =head2 exists
