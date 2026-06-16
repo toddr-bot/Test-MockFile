@@ -2979,8 +2979,8 @@ sub __glob {
     my @mocked_files = grep $files_being_mocked{$_}->exists(), keys %files_being_mocked;
     @mocked_files = map /^(.+)\/[^\/]+$/xms ? ( $_, $1 ) : ($_), @mocked_files;
 
-    # Might as well be consistent
-    @mocked_files = sort @mocked_files;
+    my %_seen_mocked;
+    @mocked_files = sort grep { !$_seen_mocked{$_}++ } @mocked_files;
 
     my @results = map Text::Glob::match_glob( $_, @mocked_files ), @patterns;
 
