@@ -303,5 +303,45 @@ note "sysopen failure returns undef in list context (single-element list)";
     ok( !defined $ret[0],        'sysopen failure element is undef (not "undef" string)' );
 }
 
+note "sysopen with O_NONBLOCK succeeds (flag accepted and ignored)";
+{
+    my $mock = Test::MockFile->file('/nonblock_test');
+    is( sysopen( my $fh, '/nonblock_test', O_WRONLY | O_CREAT | O_NONBLOCK, 0600 ), 1,
+        'sysopen O_WRONLY|O_CREAT|O_NONBLOCK succeeds' );
+    ok( -e '/nonblock_test', 'file created with O_NONBLOCK' );
+    is( syswrite( $fh, "hello" ), 5, 'write to O_NONBLOCK-opened file works' );
+    close $fh;
+    is( $mock->contents, "hello", 'contents correct after O_NONBLOCK open' );
+}
+
+note "sysopen with O_NOCTTY succeeds (flag accepted and ignored)";
+{
+    my $mock = Test::MockFile->file('/noctty_test');
+    is( sysopen( my $fh, '/noctty_test', O_WRONLY | O_CREAT | O_NOCTTY, 0600 ), 1,
+        'sysopen O_WRONLY|O_CREAT|O_NOCTTY succeeds' );
+    ok( -e '/noctty_test', 'file created with O_NOCTTY' );
+    close $fh;
+}
+
+note "sysopen with O_NONBLOCK|O_EXCL combined (issue #412 reproduction)";
+{
+    my $mock = Test::MockFile->file('/nonblock_excl_test');
+    is( sysopen( my $fh, '/nonblock_excl_test', O_WRONLY | O_CREAT | O_EXCL | O_NONBLOCK, 0600 ), 1,
+        'sysopen O_WRONLY|O_CREAT|O_EXCL|O_NONBLOCK succeeds' );
+    ok( -e '/nonblock_excl_test', 'file created with O_NONBLOCK|O_EXCL' );
+    close $fh;
+}
+
+SKIP: {
+    skip "O_CLOEXEC not available on this system", 2 unless eval { O_CLOEXEC(); 1 };
+
+    note "sysopen with O_CLOEXEC succeeds (flag accepted and ignored)";
+    my $mock = Test::MockFile->file('/cloexec_test');
+    is( sysopen( my $fh, '/cloexec_test', O_WRONLY | O_CREAT | O_CLOEXEC(), 0600 ), 1,
+        'sysopen O_WRONLY|O_CREAT|O_CLOEXEC succeeds' );
+    ok( -e '/cloexec_test', 'file created with O_CLOEXEC' );
+    close $fh;
+}
+
 done_testing();
 exit;
