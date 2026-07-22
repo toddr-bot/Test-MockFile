@@ -53,18 +53,13 @@ subtest "syswrite with non-numeric length warns" => sub {
     close $fh;
 };
 
-subtest "syswrite with negative length warns" => sub {
+subtest "syswrite with negative length dies (matches real Perl)" => sub {
     my $mock = Test::MockFile->file('/tmp/write_test2');
     sysopen( my $fh, '/tmp/write_test2', O_WRONLY | O_CREAT | O_TRUNC ) or die;
 
-    my @warnings;
-    local $SIG{__WARN__} = sub { push @warnings, $_[0] };
-
-    my $ret = syswrite( $fh, "hello", -1 );
-    is( $ret, 0, "syswrite with negative length returns 0" );
-    is( $! + 0, EINVAL, "\$! is set to EINVAL" );
-    ok( scalar @warnings >= 1, "got a warning" );
-    like( $warnings[0], qr/Negative length/, "warning mentions negative length" ) if @warnings;
+    my $ret = eval { syswrite( $fh, "hello", -1 ) };
+    ok( !defined $ret, "syswrite with negative length dies" );
+    like( $@, qr/Negative length/, "error message mentions negative length" );
 
     close $fh;
 };
@@ -130,19 +125,14 @@ subtest "sysread with non-numeric length warns and returns undef" => sub {
     close $fh;
 };
 
-subtest "sysread with negative length warns and returns undef" => sub {
+subtest "sysread with negative length dies (matches real Perl)" => sub {
     my $mock = Test::MockFile->file( '/tmp/read_test2', 'hello world' );
     sysopen( my $fh, '/tmp/read_test2', O_RDONLY ) or die;
 
-    my @warnings;
-    local $SIG{__WARN__} = sub { push @warnings, $_[0] };
-
     my $buf = '';
-    my $ret = sysread( $fh, $buf, -1 );
-    ok( !defined $ret, "sysread with negative length returns undef" );
-    is( $! + 0, EINVAL, "\$! is set to EINVAL" );
-    ok( scalar @warnings >= 1, "got a warning" );
-    like( $warnings[0], qr/Negative length/, "warning mentions negative length" ) if @warnings;
+    my $ret = eval { sysread( $fh, $buf, -1 ) };
+    ok( !defined $ret, "sysread with negative length dies" );
+    like( $@, qr/Negative length/, "error message mentions negative length" );
     is( $buf, '', "buffer is unchanged after failed sysread" );
 
     close $fh;

@@ -230,9 +230,7 @@ sub WRITE {
     $len = int($len);    # Perl seems to do this to floats.
 
     if ( $len < 0 ) {
-        CORE::warn(qq{Negative length at @{[ join ' line ', (caller)[1,2] ]}.\n});
-        $! = EINVAL;
-        return 0;
+        die qq{Negative length at @{[ join ' line ', (caller)[1,2] ]}.\n};
     }
 
     my $strlen = length($buf);
@@ -429,9 +427,7 @@ sub READ {
     $len = int($len);
 
     if ( $len < 0 ) {
-        CORE::warn(qq{Negative length at @{[ join ' line ', (caller)[1,2] ]}.\n});
-        $! = EINVAL;
-        return undef;
+        die qq{Negative length at @{[ join ' line ', (caller)[1,2] ]}.\n};
     }
 
     # If the caller's buffer is undef, we need to make it a string of 0 length to start out with.

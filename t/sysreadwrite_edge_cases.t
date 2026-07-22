@@ -136,20 +136,14 @@ use Test::MockFile qw< nostrict >;
 }
 
 {
-    note "--- syswrite with negative len warns and returns 0 ---";
+    note "--- syswrite with negative len dies (matches real Perl) ---";
 
     my $mock = Test::MockFile->file('/fake/sw_neglen');
     sysopen( my $fh, '/fake/sw_neglen', O_WRONLY | O_CREAT | O_TRUNC ) or die;
 
-    my @warns;
-    local $SIG{__WARN__} = sub { push @warns, $_[0] };
-
-    $! = 0;
-    my $ret = syswrite( $fh, "data", -5 );
-    is( $ret, 0, "syswrite with negative len returns 0" );
-    is( $! + 0, EINVAL, "errno is EINVAL for negative len" );
-    ok( @warns >= 1, "warning emitted for negative len" );
-    like( $warns[0], qr/Negative length/, "warning mentions negative length" );
+    my $ret = eval { syswrite( $fh, "data", -5 ) };
+    ok( !defined $ret, "syswrite with negative len dies (returns undef from eval)" );
+    like( $@, qr/Negative length/, "error message mentions negative length" );
 
     close $fh;
     is( $mock->contents, '', "no data written with negative len" );
@@ -194,21 +188,15 @@ use Test::MockFile qw< nostrict >;
 }
 
 {
-    note "--- sysread with negative len warns and returns undef ---";
+    note "--- sysread with negative len dies (matches real Perl) ---";
 
     my $mock = Test::MockFile->file( '/fake/sr_neglen', "test data" );
     sysopen( my $fh, '/fake/sr_neglen', O_RDONLY ) or die;
 
-    my @warns;
-    local $SIG{__WARN__} = sub { push @warns, $_[0] };
-
     my $buf = "";
-    $! = 0;
-    my $ret = sysread( $fh, $buf, -3 );
-    ok( !defined $ret, "sysread with negative len returns undef" );
-    is( $! + 0, EINVAL, "errno is EINVAL for negative len" );
-    ok( @warns >= 1, "warning emitted for negative len" );
-    like( $warns[0], qr/Negative length/, "warning mentions negative length" );
+    my $ret = eval { sysread( $fh, $buf, -3 ) };
+    ok( !defined $ret, "sysread with negative len dies (returns undef from eval)" );
+    like( $@, qr/Negative length/, "error message mentions negative length" );
 
     close $fh;
 }
