@@ -8,6 +8,7 @@ use Test2::Tools::Explain;
 use Test2::Plugin::NoWarnings;
 
 use Errno qw/ENOENT EISDIR ENOTDIR ENOTEMPTY/;
+use Scalar::Util qw/isweak/;
 
 use Test::MockFile qw< nostrict >;
 
@@ -225,6 +226,23 @@ note "-------------- rename: directory DESTROY cleanup works after rename ------
 
     # Verify child still exists under new path before cleanup
     ok( -e '/mock/dtor2/f.txt', 'child accessible before DESTROY' );
+}
+
+note "-------------- rename: re-keyed children keep weak refs in files_being_mocked --------------";
+{
+    my $dir   = Test::MockFile->new_dir('/mock/weaktest');
+    my $child = Test::MockFile->file( '/mock/weaktest/w.txt', 'data' );
+    my $dest  = Test::MockFile->dir('/mock/weaktest2');
+
+    ok( rename( '/mock/weaktest', '/mock/weaktest2' ), 'rename for weakref test' );
+
+    ok( isweak( $Test::MockFile::files_being_mocked{'/mock/weaktest2/w.txt'} ),
+        'child entry in files_being_mocked is weakened after directory rename' );
+
+    # When user drops the reference, mock should be garbage collected
+    undef $child;
+    ok( !defined $Test::MockFile::files_being_mocked{'/mock/weaktest2/w.txt'},
+        'child mock is garbage collected after user drops reference' );
 }
 
 note "-------------- rename: preserves inode and nlink --------------";
