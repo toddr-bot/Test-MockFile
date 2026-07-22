@@ -323,7 +323,7 @@ use Test::MockFile qw< nostrict >;
 
     local $!;
     my $ret = syswrite( $fh, "nope", 4 );
-    is( $ret, 0, "syswrite on read-only handle returns 0" );
+    is( $ret, undef, "syswrite on read-only handle returns undef" );
     is( $! + 0, EBADF, "errno is EBADF for syswrite on read-only handle" );
 
     close $fh;
@@ -354,7 +354,7 @@ use Test::MockFile qw< nostrict >;
     my @warns;
     local $SIG{__WARN__} = sub { push @warns, $_[0] };
     my $ret = syswrite( $fh, "abc", 3, -10 );
-    is( $ret, 0, "syswrite with offset past buffer start returns 0" );
+    is( $ret, undef, "syswrite with offset past buffer start returns undef" );
     is( $! + 0, EINVAL, "errno is EINVAL for out-of-bounds negative offset" );
     ok( grep( /Offset outside string/, @warns ), "warning emitted for out-of-bounds negative offset" );
 
@@ -373,7 +373,7 @@ use Test::MockFile qw< nostrict >;
     my @warns;
     local $SIG{__WARN__} = sub { push @warns, $_[0] };
     my $ret = syswrite( $fh, "abc", 3, 10 );
-    is( $ret, 0, "syswrite with offset past buffer end returns 0" );
+    is( $ret, undef, "syswrite with offset past buffer end returns undef" );
     is( $! + 0, EINVAL, "errno is EINVAL for out-of-bounds positive offset" );
     ok( grep( /Offset outside string/, @warns ), "warning emitted for out-of-bounds positive offset" );
 

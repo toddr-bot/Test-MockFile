@@ -102,7 +102,7 @@ note "--- syswrite with negative offset ---";
     my @warnings;
     local $SIG{__WARN__} = sub { push @warnings, $_[0] };
     my $result = syswrite( $fh, $buf, 2, -10 );
-    is( $result, 0, "syswrite with out-of-bounds negative offset returns 0" );
+    is( $result, undef, "syswrite with out-of-bounds negative offset returns undef" );
     ok( scalar @warnings, "warning emitted for out-of-bounds offset" );
     like( $warnings[0], qr/Offset outside string/, "warning mentions offset" );
     close($fh);
