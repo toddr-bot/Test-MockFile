@@ -239,4 +239,35 @@ note "-------------- rename: preserves inode and nlink --------------";
     is( $st[3], 3,  'nlink preserved after rename' );
 }
 
+note "-------------- rename: child file mock weakref on re-key --------------";
+{
+    my $parent = Test::MockFile->new_dir('/mock/wkparent');
+    my $child  = Test::MockFile->file( '/mock/wkparent/data', 'hello' );
+    my $dest   = Test::MockFile->new_dir('/mock/wknew');
+
+    ok( rename( '/mock/wkparent', '/mock/wknew' ), 'rename parent dir with child file' );
+    is( $child->contents, 'hello', 'child contents intact after rename' );
+
+    undef $child;
+
+    ok( !-e '/mock/wknew/data', 'child file mock GC\'d after undef (weakref preserved)' );
+}
+
+note "-------------- rename: autovivify child dir weakref on re-key --------------";
+{
+    my $parent = Test::MockFile->new_dir('/mock/avparent');
+    my $child  = Test::MockFile->new_dir( '/mock/avparent/sub', { 'autovivify' => 1 } );
+    my $dest   = Test::MockFile->new_dir('/mock/avnew');
+
+    ok( rename( '/mock/avparent', '/mock/avnew' ), 'rename parent dir with autovivify child' );
+
+    ok( open( my $fh, '>', '/mock/avnew/sub/test.txt' ), 'autovivify works under renamed child' );
+    close $fh;
+    ok( -e '/mock/avnew/sub/test.txt', 'autovivified file exists' );
+
+    undef $child;
+
+    ok( !-d '/mock/avnew/sub', 'child dir mock GC\'d after undef (autovivify weakref preserved)' );
+}
+
 done_testing();

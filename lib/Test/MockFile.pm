@@ -4101,11 +4101,13 @@ sub __rename ($$) {
 
             delete $files_being_mocked{$key};
             $files_being_mocked{$new_key} = $child;
+            Scalar::Util::weaken( $files_being_mocked{$new_key} );
             $child->{'path'} = $new_key;
 
             # Update autovivify tracking for child directories
             if ( $_autovivify_dirs{$key} ) {
                 $_autovivify_dirs{$new_key} = delete $_autovivify_dirs{$key};
+                Scalar::Util::weaken( $_autovivify_dirs{$new_key} );
             }
         }
     }
