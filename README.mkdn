@@ -1,4 +1,4 @@
-[\![linux](https://github.com/cpanel/Test-MockFile/actions/workflows/linux.yml/badge.svg)](https://github.com/cpanel/Test-MockFile/actions/workflows/linux.yml)
+[\![linux](https://github.com/cpan-authors/Test-MockFile/actions/workflows/linux.yml/badge.svg)](https://github.com/cpan-authors/Test-MockFile/actions/workflows/linux.yml)
 
 # NAME
 
@@ -844,7 +844,7 @@ Todd Rinaldo, `<toddr at cpan.org>`
 # BUGS
 
 Please report any bugs or feature requests to
-[https://github.com/cpanel/Test-MockFile](https://github.com/cpanel/Test-MockFile).
+[https://github.com/cpan-authors/Test-MockFile](https://github.com/cpan-authors/Test-MockFile).
 
 # SUPPORT
 

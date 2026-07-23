@@ -139,7 +139,7 @@ sub PRINT {
     if ( !$self->{'write'} ) {
 
         # Filehandle $fh opened only for input at t/readline.t line 27, <$fh> line 2.
-        # https://github.com/cpanel/Test-MockFile/issues/1
+        # https://github.com/cpan-authors/Test-MockFile/issues/1
         CORE::warn("Filehandle ???? opened only for input at ???? line ???, <???> line ???.");
         $! = EBADF;
         return;
@@ -570,7 +570,7 @@ sub BINMODE {
 =head2 OPEN
 
 B<UNIMPLEMENTED>: Open a ticket in
-L<github|https://github.com/cpanel/Test-MockFile/issues> if you need
+L<github|https://github.com/cpan-authors/Test-MockFile/issues> if you need
 this feature.
 
 No L<perldoc
@@ -587,7 +587,7 @@ sub OPEN {
 =head2 FILENO
 
 B<UNIMPLEMENTED>: Open a ticket in
-L<github|https://github.com/cpanel/Test-MockFile/issues> if you need
+L<github|https://github.com/cpan-authors/Test-MockFile/issues> if you need
 this feature.
 
 No L<perldoc

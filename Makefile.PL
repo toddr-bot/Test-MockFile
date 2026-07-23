@@ -34,8 +34,8 @@ WriteMakefile(
     META_MERGE => {
         resources => {
             license    => 'http://dev.perl.org/licenses/',
-            bugtracker => 'https://github.com/cpanel/Test-MockFile/issues',
-            repository => 'https://github.com/cpanel/Test-MockFile',
+            bugtracker => 'https://github.com/cpan-authors/Test-MockFile/issues',
+            repository => 'https://github.com/cpan-authors/Test-MockFile',
         }
     },
 );

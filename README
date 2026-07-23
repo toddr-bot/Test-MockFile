@@ -3,7 +3,7 @@ NAME
     files without touching the file system.
 
 VERSION
-    Version 0.038
+    Version 0.039
 
 SYNOPSIS
     Intercepts file system calls for specific files so unit testing can take
@@ -787,7 +787,7 @@ AUTHOR
 
 BUGS
     Please report any bugs or feature requests to
-    <https://github.com/cpanel/Test-MockFile>.
+    <https://github.com/cpan-authors/Test-MockFile>.
 
 SUPPORT
     You can find documentation for this module with the perldoc command.
