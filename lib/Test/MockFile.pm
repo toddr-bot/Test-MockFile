@@ -3066,6 +3066,46 @@ sub __open (*;$@) {
         return CORE::open( $_[0], $mode, $file );
     }
 
+    # Handle dup modes: <&, >&, <&=, >&= (3-arg form only).
+    # When the source handle is a mocked filehandle, create a new tied
+    # handle that shares the same mock data instead of falling through
+    # to CORE::open (which would fail because mocked filenos are fake).
+    if ( $mode =~ m/^[<>]\&=?$/ && ref $file ) {
+        my $src_path = _fh_to_file($file);
+        if ( defined $src_path ) {
+            my $mock_file = _get_file_object($src_path);
+            if ($mock_file) {
+                my $src_tied = tied *{$file};
+                my $rw = '';
+                if ($src_tied) {
+                    $rw .= 'r' if $src_tied->{'read'};
+                    $rw .= 'w' if $src_tied->{'write'};
+                    $rw .= 'a' if $src_tied->{'append'};
+                }
+                else {
+                    $rw = 'r';
+                }
+
+                my $filefh = IO::File->new;
+                tie *{$filefh}, 'Test::MockFile::FileHandle', $src_path, $rw;
+
+                if ($src_tied) {
+                    my $dup_tied = tied *{$filefh};
+                    $dup_tied->{'tell'}        = $src_tied->{'tell'};
+                    $dup_tied->{'line_number'} = $src_tied->{'line_number'};
+                }
+
+                $_[0] = $filefh;
+
+                $mock_file->{'fhs'} //= [];
+                push @{ $mock_file->{'fhs'} }, $_[0];
+                Scalar::Util::weaken( $mock_file->{'fhs'}[-1] ) if ref $_[0];
+
+                return 1;
+            }
+        }
+    }
+
     my $abs_path = _find_file_or_fh( $file, 1 );    # Follow the link.
     confess() if !$abs_path && $mode ne '|-' && $mode ne '-|';
 
