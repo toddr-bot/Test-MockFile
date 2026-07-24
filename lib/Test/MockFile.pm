@@ -3025,6 +3025,8 @@ sub __open (*;$@) {
         if ( $_[1] =~ /^ ( [+]?>> | [+]?> | [+]?< ) (.+) $/xms ) {
             $mode = $1;
             $file = $2;
+            $file =~ s/^\s+//;
+            $file =~ s/\s+$//;
         }
         elsif ( $_[1] =~ /^\|/xms ) {
             $mode = '|-';
@@ -3039,6 +3041,8 @@ sub __open (*;$@) {
             # This handles filenames with spaces, special chars, etc.
             $mode = '<';
             $file = $_[1];
+            $file =~ s/^\s+//;
+            $file =~ s/\s+$//;
         }
 
         # We have all args
