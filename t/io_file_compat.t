@@ -218,4 +218,44 @@ note "-------------- IO::File append mode preserves append semantics after seek 
     }
 }
 
+note "-------------- Multiple IO::File handles to same mock (GH #426) --------------";
+{
+    my $mock = Test::MockFile->file( '/fake/iofile_multi', "shared content" );
+
+    my $fh1 = IO::File->new( '/fake/iofile_multi', 'r' );
+    my $fh2 = IO::File->new( '/fake/iofile_multi', 'r' );
+    ok( defined $fh1, "first IO::File handle opens" );
+    ok( defined $fh2, "second IO::File handle opens" );
+
+    if ( $fh1 && $fh2 ) {
+        is( <$fh1>, "shared content", " ... fh1 reads correctly" );
+        is( <$fh2>, "shared content", " ... fh2 reads correctly" );
+
+        my @st1 = stat($fh1);
+        my @st2 = stat($fh2);
+        is( scalar @st1, 13, " ... stat on first IO::File handle works" );
+        is( scalar @st2, 13, " ... stat on second IO::File handle works" );
+
+        $fh1->close;
+        $fh2->close;
+    }
+}
+
+note "-------------- IO::File handle lookup survives after close of peer --------------";
+{
+    my $mock = Test::MockFile->file( '/fake/iofile_close_peer', "test data" );
+
+    my $fh1 = IO::File->new( '/fake/iofile_close_peer', 'r' );
+    my $fh2 = IO::File->new( '/fake/iofile_close_peer', 'r' );
+
+    if ( $fh1 && $fh2 ) {
+        $fh1->close;
+
+        my @st = stat($fh2);
+        is( scalar @st, 13, "stat on surviving handle works after peer closed" );
+
+        $fh2->close;
+    }
+}
+
 done_testing();

@@ -2840,9 +2840,10 @@ sub _io_file_mock_open {
     # Tie the existing IO::File glob directly (don't create a new one)
     tie *{$fh}, 'Test::MockFile::FileHandle', $abs_path, $rw;
 
-    # Track the handle
-    $mock_file->{'fh'} = $fh;
-    Scalar::Util::weaken( $mock_file->{'fh'} ) if ref $fh;
+    # Track all open file handles for this mock (supports multiple handles to same file).
+    $mock_file->{'fhs'} //= [];
+    push @{ $mock_file->{'fhs'} }, $fh;
+    Scalar::Util::weaken( $mock_file->{'fhs'}[-1] ) if ref $fh;
 
     # Handle append/truncate modes
     if ( $mode eq '>>' or $mode eq '+>>' ) {
